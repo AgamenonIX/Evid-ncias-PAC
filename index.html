@@ -64,8 +64,10 @@
   .item-cab{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:10px;}
   .item-num{font-weight:800;color:var(--vinho);font-size:15px;}
   .item-desc{font-size:13.5px;line-height:1.35;margin-top:2px;}
+  .etapa-rot{display:flex;justify-content:space-between;align-items:center;font-size:12.5px;font-weight:800;color:var(--azul);margin:10px 0 5px;letter-spacing:.3px;}
+  .etapa-rot span{font-weight:600;color:var(--texto-claro);}
   .slots{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;}
-  .slot{position:relative;aspect-ratio:3/4;border-radius:10px;border:2px dashed var(--cinza-borda);background:#f8fafc;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;overflow:hidden;font-size:12.5px;font-weight:700;color:var(--texto-claro);text-align:center;padding:4px;}
+  .slot{position:relative;aspect-ratio:1/1;border-radius:10px;border:2px dashed var(--cinza-borda);background:#f8fafc;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;overflow:hidden;font-size:12.5px;font-weight:700;color:var(--texto-claro);text-align:center;padding:4px;}
   .slot .ico{font-size:26px;margin-bottom:4px;}
   .slot.tem{border:2px solid var(--verde);padding:0;}
   .slot img{width:100%;height:100%;object-fit:cover;display:block;}
@@ -152,7 +154,7 @@
       <button class="btn verde" id="btn-sincronizar">☁️ Enviar agora para o medidor</button>
       <p class="dica">Normalmente não precisa: o envio é automático assim que o celular tiver internet. Use se quiser forçar.</p>
       <button class="btn claro" id="btn-exportar" style="background:#25d366;color:#fff;border:none;">📤 Enviar todas as fotos no WhatsApp (reserva)</button>
-      <p class="dica">As fotos vão com nome no padrão ITEM_36_1_ANTES.jpg.</p>
+      <p class="dica">As fotos vão com nome no padrão ITEM_36_1_ANTES_1.jpg.</p>
       <div class="linha-btn">
         <button class="btn claro" id="btn-editar">✏️ Editar laudo</button>
         <button class="btn perigo" id="btn-excluir-laudo">Excluir laudo</button>
@@ -200,6 +202,7 @@ const ITENS = [
   { n: '37', d: 'Área Industrial - Jateamento abrasivo ao metal quase branco padrão Sa 2.1/2.' },
   { n: '38', d: 'Área Industrial - Lavagem com água doce em alta pressão.' }
 ];
+const FOTOS_POR_ETAPA = 3;   // fotos em cada etapa (ANTES / DURANTE / DEPOIS)
 const ETAPAS = [
   { id: 'antes',   rot: 'ANTES',   ord: 1 },
   { id: 'durante', rot: 'DURANTE', ord: 2 },
@@ -249,7 +252,8 @@ const dbGet     = (store, k)   => tx(store, 'readonly',  st => st.get(k));
 const dbDel     = (store, k)   => tx(store, 'readwrite', st => st.delete(k));
 const dbAll     = (store)      => tx(store, 'readonly',  st => st.getAll());
 const fotosDoLaudo = (laudoId) => tx('fotos', 'readonly', st => st.index('laudoId').getAll(laudoId));
-const chaveFoto = (laudoId, item, etapa) => `${laudoId}|${item}|${etapa}`;
+const chaveFoto = (laudoId, item, etapa, n) => `${laudoId}|${item}|${etapa}|${n}`;
+const FOTOS_POR_ITEM = () => ETAPAS.length * FOTOS_POR_ETAPA;
 
 /* ---------- Utilidades ---------- */
 function esc(s) {
@@ -329,7 +333,7 @@ async function irParaLista() {
 async function contarFotos(laudo) {
   const fotos = await fotosDoLaudo(laudo.id);
   const validas = fotos.filter(f => laudo.itens.includes(f.item));
-  return { feitas: validas.length, total: laudo.itens.length * ETAPAS.length };
+  return { feitas: validas.length, total: laudo.itens.length * FOTOS_POR_ITEM() };
 }
 async function renderLista() {
   const laudos = (await dbAll('laudos')).sort((a, b) => b.criadoEm - a.criadoEm);
@@ -383,7 +387,7 @@ async function abrirLaudo(id) {
   laudoAtual = await dbGet('laudos', id);
   if (!laudoAtual) { irParaLista(); return; }
   editandoId = null;
-  mostrarTela('tela-laudo', laudoAtual.tag, 'Toque em ANTES / DURANTE / DEPOIS para fotografar');
+  mostrarTela('tela-laudo', laudoAtual.tag, `Toque nos quadros para fotografar (${FOTOS_POR_ETAPA} por etapa)`);
   await renderLaudo();
 }
 async function renderLaudo() {
@@ -395,31 +399,39 @@ async function renderLaudo() {
   const html = l.itens.map(n => {
     const it = itemPorNum(n);
     let qtd = 0;
-    const slots = ETAPAS.map(et => {
-      const f = mapa[chaveFoto(l.id, n, et.id)];
-      if (f) {
-        qtd++;
-        return `<div class="slot tem" data-item="${esc(n)}" data-etapa="${et.id}">
-          <img src="${f.base64}" alt=""><div class="etq">✅ ${et.rot}</div>
-          <span class="nuvem ${f.status === 'enviado' ? 'env' : 'pend'}">${f.status === 'enviado' ? '☁️ enviada' : '⏳'}</span></div>`;
+    const blocos = ETAPAS.map(et => {
+      let qEt = 0;
+      const slots = [];
+      for (let k = 1; k <= FOTOS_POR_ETAPA; k++) {
+        const f = mapa[chaveFoto(l.id, n, et.id, k)];
+        if (f) {
+          qEt++;
+          slots.push(`<div class="slot tem" data-item="${esc(n)}" data-etapa="${et.id}" data-n="${k}">
+            <img src="${f.base64}" alt=""><div class="etq">✅ ${et.rot} ${k}</div>
+            <span class="nuvem ${f.status === 'enviado' ? 'env' : 'pend'}">${f.status === 'enviado' ? '☁️' : '⏳'}</span></div>`);
+        } else {
+          slots.push(`<div class="slot" data-item="${esc(n)}" data-etapa="${et.id}" data-n="${k}"><div class="ico">📷</div>${et.rot} ${k}</div>`);
+        }
       }
-      return `<div class="slot" data-item="${esc(n)}" data-etapa="${et.id}"><div class="ico">📷</div>${et.rot}</div>`;
+      qtd += qEt;
+      return `<div class="etapa-rot">${et.rot}<span>${qEt}/${FOTOS_POR_ETAPA}</span></div><div class="slots">${slots.join('')}</div>`;
     }).join('');
     feitas += qtd;
-    const cls = qtd === 0 ? 'zero' : (qtd === 3 ? 'ok' : 'parcial');
+    const tot = FOTOS_POR_ITEM();
+    const cls = qtd === 0 ? 'zero' : (qtd >= tot ? 'ok' : 'parcial');
     return `<div class="card">
       <div class="item-cab">
         <div><div class="item-num">ITEM ${esc(n)}</div><div class="item-desc">${esc(it.d)}</div></div>
-        <span class="badge ${cls}">${qtd}/3</span>
+        <span class="badge ${cls}">${qtd}/${tot}</span>
       </div>
-      <div class="slots">${slots}</div>
+      ${blocos}
       <div class="acoes-item">
         <button class="btn-mini btn-zap" data-zap="${esc(n)}" ${qtd === 0 ? 'disabled style="opacity:.5"' : ''}>📤 Enviar item no WhatsApp</button>
       </div>
     </div>`;
   }).join('');
   document.getElementById('lista-itens').innerHTML = html;
-  const total = l.itens.length * 3;
+  const total = l.itens.length * FOTOS_POR_ITEM();
   document.getElementById('laudo-progresso').textContent =
     feitas >= total ? `✅ Todas as ${total} fotos feitas.` : `${feitas} de ${total} fotos feitas — faltam ${total - feitas}.`;
 
@@ -429,43 +441,43 @@ async function renderLaudo() {
     (pend === 0 ? '☁️ <b>Todas as fotos já foram enviadas ao medidor.</b>'
                 : `⏳ <b>${pend} foto(s) aguardando envio</b> — vão sozinhas quando tiver internet.`);
   document.querySelectorAll('#lista-itens .slot').forEach(s => s.addEventListener('click', () => {
-    const item = s.dataset.item, etapa = s.dataset.etapa;
-    if (s.classList.contains('tem')) abrirModal(item, etapa);
-    else pedirFoto(item, etapa, 'camera');
+    const item = s.dataset.item, etapa = s.dataset.etapa, n = Number(s.dataset.n);
+    if (s.classList.contains('tem')) abrirModal(item, etapa, n);
+    else pedirFoto(item, etapa, n, 'camera');
   }));
   document.querySelectorAll('#lista-itens [data-zap]').forEach(b => b.addEventListener('click', () => compartilharItem(b.dataset.zap)));
 }
 
 /* ---------- Captura de foto ---------- */
-let alvoFoto = null; // {item, etapa}
-function pedirFoto(item, etapa, origem) {
+let alvoFoto = null; // {item, etapa, n}
+function pedirFoto(item, etapa, n, origem) {
   if (!nomeResp()) {
     alert('Antes de fotografar, informe seu nome na tela inicial (campo "Seu nome").');
     irParaLista(); setTimeout(() => campoNome.focus(), 300);
     return;
   }
-  alvoFoto = { item, etapa };
+  alvoFoto = { item, etapa, n };
   document.getElementById(origem === 'galeria' ? 'galeria-input' : 'foto-input').click();
 }
 async function receberArquivo(e) {
   const file = e.target.files && e.target.files[0];
   e.target.value = '';
   if (!file || !alvoFoto || !laudoAtual) return;
-  const { item, etapa } = alvoFoto;
+  const { item, etapa, n } = alvoFoto;
   const et = ETAPAS.find(x => x.id === etapa);
   // Foto da galeria: usa a data do arquivo; foto da câmera: agora
   const quando = file.lastModified && Math.abs(Date.now() - file.lastModified) < 1000 * 60 * 60 * 24 * 365 ? file.lastModified : Date.now();
   toast('Processando foto...', 1500);
   try {
     const base64 = await processarFoto(file, [
-      `ITEM ${item} · ${et.rot}`,
+      `ITEM ${item} · ${et.rot} ${n}/${FOTOS_POR_ETAPA}`,
       `${fmtDataHora(quando)} · ${textoLocal(laudoAtual)}`
     ]);
-    await dbPut('fotos', { chave: chaveFoto(laudoAtual.id, item, etapa), laudoId: laudoAtual.id, item, etapa, base64,
+    await dbPut('fotos', { chave: chaveFoto(laudoAtual.id, item, etapa, n), laudoId: laudoAtual.id, item, etapa, n, base64,
                            dataHora: quando, responsavel: nomeResp(), status: 'pendente' });
     fecharModal();
     await renderLaudo();
-    toast(`✅ Item ${item} — ${et.rot} salvo.`);
+    toast(`✅ Item ${item} — ${et.rot} ${n} salva.`);
     if (navigator.onLine) sincronizarTudo();
   } catch (err) {
     console.error(err);
@@ -476,20 +488,20 @@ document.getElementById('foto-input').addEventListener('change', receberArquivo)
 document.getElementById('galeria-input').addEventListener('change', receberArquivo);
 
 /* ---------- Modal: ver / substituir / excluir foto ---------- */
-async function abrirModal(item, etapa) {
-  const f = await dbGet('fotos', chaveFoto(laudoAtual.id, item, etapa));
+async function abrirModal(item, etapa, n) {
+  const f = await dbGet('fotos', chaveFoto(laudoAtual.id, item, etapa, n));
   if (!f) return;
-  alvoFoto = { item, etapa };
+  alvoFoto = { item, etapa, n };
   document.getElementById('modal-img').src = f.base64;
   document.getElementById('modal').style.display = 'flex';
 }
 function fecharModal() { document.getElementById('modal').style.display = 'none'; }
 document.getElementById('m-fechar').addEventListener('click', fecharModal);
-document.getElementById('m-camera').addEventListener('click', () => pedirFoto(alvoFoto.item, alvoFoto.etapa, 'camera'));
-document.getElementById('m-galeria').addEventListener('click', () => pedirFoto(alvoFoto.item, alvoFoto.etapa, 'galeria'));
+document.getElementById('m-camera').addEventListener('click', () => pedirFoto(alvoFoto.item, alvoFoto.etapa, alvoFoto.n, 'camera'));
+document.getElementById('m-galeria').addEventListener('click', () => pedirFoto(alvoFoto.item, alvoFoto.etapa, alvoFoto.n, 'galeria'));
 document.getElementById('m-excluir').addEventListener('click', async () => {
   if (!confirm('Excluir esta foto?')) return;
-  await dbDel('fotos', chaveFoto(laudoAtual.id, alvoFoto.item, alvoFoto.etapa));
+  await dbDel('fotos', chaveFoto(laudoAtual.id, alvoFoto.item, alvoFoto.etapa, alvoFoto.n));
   fecharModal();
   await renderLaudo();
 });
@@ -504,6 +516,16 @@ document.getElementById('btn-excluir-laudo').addEventListener('click', async () 
   toast('Laudo excluído.');
   irParaLista();
 });
+
+/* ---------- Nome do arquivo: ITEM_36_1_ANTES_2.jpg ---------- */
+function nomeArquivo(f) {
+  const et = ETAPAS.find(e => e.id === f.etapa);
+  return `ITEM_${f.item}_${et.ord}_${et.rot}_${f.n || 1}.jpg`;
+}
+function ordenarFotos(fotos) {
+  const ord = id => ETAPAS.find(e => e.id === id).ord;
+  return fotos.sort((a, b) => Number(a.item) - Number(b.item) || ord(a.etapa) - ord(b.etapa) || (a.n || 1) - (b.n || 1));
+}
 
 /* ---------- Baixar / compartilhar todas as fotos ---------- */
 function dataURLparaFile(dataURL, nome) {
@@ -532,37 +554,41 @@ document.getElementById('btn-exportar').addEventListener('click', async () => {
   const l = laudoAtual;
   const fotos = (await fotosDoLaudo(l.id)).filter(f => l.itens.includes(f.item));
   if (!fotos.length) { toast('Nenhuma foto neste laudo ainda.'); return; }
-  const ordem = id => ETAPAS.find(e => e.id === id);
-  fotos.sort((a, b) => Number(a.item) - Number(b.item) || ordem(a.etapa).ord - ordem(b.etapa).ord);
-  const arquivos = fotos.map(f => dataURLparaFile(f.base64, `ITEM_${f.item}_${ordem(f.etapa).ord}_${ordem(f.etapa).rot}.jpg`));
+  ordenarFotos(fotos);
+  const arquivos = fotos.map(f => dataURLparaFile(f.base64, nomeArquivo(f)));
   await compartilharOuBaixar(arquivos, 'Evidências ' + l.tag, textoLocal(l));
 });
 
-/* ---------- WhatsApp: 1 item = colagem ANTES | DURANTE | DEPOIS + texto ---------- */
+/* ---------- WhatsApp: 1 item = colagem (linhas ANTES / DURANTE / DEPOIS) + texto ---------- */
 async function compartilharItem(n) {
   const l = laudoAtual, it = itemPorNum(n);
-  const fotos = await fotosDoLaudo(l.id);
-  const lado = 700, gap = 8, cab = 56;
+  const fotos = (await fotosDoLaudo(l.id)).filter(p => p.item === n);
+  const lado = 520, gap = 8, cab = 48, K = FOTOS_POR_ETAPA;
   const c = document.createElement('canvas');
-  c.width = 3 * lado + 4 * gap; c.height = lado + cab + 2 * gap;
+  c.width = K * lado + (K + 1) * gap;
+  c.height = ETAPAS.length * (lado + cab + gap) + gap;
   const ctx = c.getContext('2d');
   ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height);
-  for (let i = 0; i < ETAPAS.length; i++) {
-    const et = ETAPAS[i];
-    const x = gap + i * (lado + gap), y = gap;
-    ctx.fillStyle = '#9B142D'; ctx.fillRect(x, y, lado, cab);
-    ctx.fillStyle = '#fff'; ctx.font = 'bold 30px Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText(et.rot, x + lado / 2, y + cab / 2);
-    const f = fotos.find(p => p.item === n && p.etapa === et.id);
-    if (f) {
-      const img = await carregarImagem(f.base64);
-      const s = Math.min(lado / img.width, lado / img.height);
-      const w = img.width * s, h = img.height * s;
-      ctx.fillStyle = '#000'; ctx.fillRect(x, y + cab, lado, lado);
-      ctx.drawImage(img, x + (lado - w) / 2, y + cab + (lado - h) / 2, w, h);
-    } else {
-      ctx.fillStyle = '#f1f5f9'; ctx.fillRect(x, y + cab, lado, lado);
-      ctx.fillStyle = '#94a3b8'; ctx.font = 'bold 34px Arial'; ctx.fillText('SEM FOTO', x + lado / 2, y + cab + lado / 2);
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  for (let r = 0; r < ETAPAS.length; r++) {
+    const et = ETAPAS[r];
+    for (let k = 1; k <= K; k++) {
+      const x = gap + (k - 1) * (lado + gap), y = gap + r * (lado + cab + gap);
+      ctx.fillStyle = '#9B142D'; ctx.fillRect(x, y, lado, cab);
+      ctx.fillStyle = '#fff'; ctx.font = 'bold 26px Arial';
+      ctx.fillText(`${et.rot} ${k}`, x + lado / 2, y + cab / 2);
+      const f = fotos.find(p => p.etapa === et.id && (p.n || 1) === k);
+      if (f) {
+        const img = await carregarImagem(f.base64);
+        const s = Math.min(lado / img.width, lado / img.height);
+        const w = img.width * s, h = img.height * s;
+        ctx.fillStyle = '#000'; ctx.fillRect(x, y + cab, lado, lado);
+        ctx.drawImage(img, x + (lado - w) / 2, y + cab + (lado - h) / 2, w, h);
+      } else {
+        ctx.fillStyle = '#f1f5f9'; ctx.fillRect(x, y + cab, lado, lado);
+        ctx.fillStyle = '#94a3b8'; ctx.font = 'bold 30px Arial';
+        ctx.fillText('SEM FOTO', x + lado / 2, y + cab + lado / 2);
+      }
     }
   }
   const blob = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.85));
@@ -570,7 +596,10 @@ async function compartilharItem(n) {
   const texto = `📸 EVIDÊNCIAS DAS ATIVIDADES
 📍 Local: ${textoLocal(l)}
 📗 Item ${n}: ${it.d}
-${ETAPAS.map(et => (fotos.some(p => p.item === n && p.etapa === et.id) ? '✅ ' : '⏳ ') + et.rot).join('   ')}`;
+${ETAPAS.map(et => {
+    const q = fotos.filter(p => p.etapa === et.id).length;
+    return (q >= K ? '✅ ' : '⏳ ') + et.rot + ' ' + q + '/' + K;
+  }).join('   ')}`;
   await compartilharOuBaixar([arq], 'Item ' + n, texto);
 }
 
@@ -583,7 +612,8 @@ async function enviarFoto(f, laudo) {
     tag: laudo.tag, laudo: laudo.laudo || '', local: textoLocal(laudo),
     item: f.item, descricao: it.d, etapa: et.rot, ordem: et.ord,
     dataHora: fmtDataHora(f.dataHora), responsavel: f.responsavel || nomeResp(),
-    nomeArquivo: `ITEM_${f.item}_${et.ord}_${et.rot}.jpg`,
+    numero: f.n || 1, fotosPorEtapa: FOTOS_POR_ETAPA,
+    nomeArquivo: nomeArquivo(f),
     base64: f.base64.split(',')[1]
   };
   const r = await fetch(APPS_SCRIPT_URL, {
