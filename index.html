@@ -83,32 +83,12 @@
 
   .tela{display:none;} .tela.ativa{display:block;}
 
-  /* ---------- RELATÓRIO (só aparece na impressão / PDF) ---------- */
-  #relatorio{display:none;}
-  @media print{
-    @page{size:A4 portrait;margin:8mm;}
-    body{background:#fff;padding:0;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
-    header,main,#modal,#toast{display:none !important;}
-    #relatorio{display:block;}
-    .pag{page-break-after:always;break-after:page;width:194mm;height:280mm;display:flex;flex-direction:column;font-family:Arial,sans-serif;color:#000;}
-    .pag:last-child{page-break-after:auto;break-after:auto;}
-  }
-  .r-tab{width:100%;border-collapse:collapse;font-size:10pt;}
-  .r-tab td{border:1px solid #000;padding:4px 6px;vertical-align:middle;}
-  .r-logo{width:34mm;text-align:center;} .r-logo img{height:18mm;}
-  .r-titulo{text-align:center;font-weight:700;font-size:15pt;}
-  .r-rot{font-weight:700;width:24mm;white-space:nowrap;}
-  .r-fotos{flex:1;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:3mm;padding:3mm 0;min-height:0;}
-  .r-foto{border:1px solid #000;display:flex;flex-direction:column;min-height:0;}
-  .r-foto.cheia{grid-column:1 / span 2;}
-  .r-foto .img{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;background:#fff;}
-  .r-foto .img img{max-width:100%;max-height:100%;object-fit:contain;}
-  .r-foto .sem{color:#999;font-size:11pt;}
-  .r-foto .leg{border-top:1px solid #000;font-size:8.5pt;padding:2px 4px;text-align:center;}
-  .r-foto .leg b{font-size:9.5pt;}
-  .r-ass td{height:9mm;}
-  .r-ass .vert{width:8mm;text-align:center;font-weight:700;font-size:8pt;line-height:1.05;}
-  .r-ass .nome{width:48mm;font-weight:700;font-size:9pt;}
+  #status-bar{display:flex;align-items:center;gap:8px;padding:8px 16px;font-size:12.5px;background:#e2e8f0;color:var(--texto-claro);}
+  .dot{width:8px;height:8px;border-radius:50%;display:inline-block;background:var(--texto-claro);}
+  #status-bar.online .dot{background:var(--verde);}
+  #status-bar.offline .dot{background:var(--amarelo);}
+  .nuvem{position:absolute;top:4px;right:4px;background:rgba(255,255,255,.92);border-radius:12px;font-size:11px;padding:2px 6px;font-weight:700;}
+  .nuvem.env{color:#166534;} .nuvem.pend{color:#92400e;}
 </style>
 </head>
 <body>
@@ -121,13 +101,20 @@
   </div>
 </header>
 
+<div id="status-bar" class="offline"><span class="dot"></span><span id="status-texto">Verificando conexão...</span></div>
+
 <main>
 
   <!-- ================= TELA 1: LISTA DE LAUDOS ================= -->
   <section id="tela-lista" class="tela ativa">
     <div class="card">
+      <label for="nome-resp">Seu nome (quem tira as fotos) *</label>
+      <input type="text" id="nome-resp" placeholder="Ex: Alex Sandro" autocomplete="name">
+      <p class="dica">Fica gravado neste celular e vai junto com cada foto enviada ao medidor.</p>
+    </div>
+    <div class="card">
       <label style="margin-bottom:2px;">Laudos / locais</label>
-      <p class="dica">Cada laudo guarda as fotos ANTES, DURANTE e DEPOIS de cada item. As fotos ficam salvas neste celular, mesmo sem internet.</p>
+      <p class="dica">Cada laudo guarda as fotos ANTES, DURANTE e DEPOIS de cada item. As fotos ficam salvas neste celular e são enviadas sozinhas para o medidor quando tiver internet.</p>
       <div id="lista-laudos" style="margin-top:8px;"><div id="vazio">Nenhum laudo cadastrado ainda.</div></div>
       <button class="btn vinho" id="btn-novo">＋ Novo laudo</button>
     </div>
@@ -161,10 +148,11 @@
     </div>
     <div id="lista-itens"></div>
     <div class="card">
-      <button class="btn verde" id="btn-relatorio">📄 Gerar relatório (PDF)</button>
-      <p class="dica">Abre a tela de impressão. Escolha <b>"Salvar como PDF"</b>. Uma página por item, com as 3 fotos e o quadro de assinaturas.</p>
-      <button class="btn claro" id="btn-exportar">⬇️ Baixar / compartilhar todas as fotos</button>
-      <p class="dica">Nomes no padrão ITEM_36_1_ANTES.jpg — prontos para colar na planilha de evidências.</p>
+      <div id="envio-status" class="dica" style="margin:0 0 6px;"></div>
+      <button class="btn verde" id="btn-sincronizar">☁️ Enviar agora para o medidor</button>
+      <p class="dica">Normalmente não precisa: o envio é automático assim que o celular tiver internet. Use se quiser forçar.</p>
+      <button class="btn claro" id="btn-exportar" style="background:#25d366;color:#fff;border:none;">📤 Enviar todas as fotos no WhatsApp (reserva)</button>
+      <p class="dica">As fotos vão com nome no padrão ITEM_36_1_ANTES.jpg.</p>
       <div class="linha-btn">
         <button class="btn claro" id="btn-editar">✏️ Editar laudo</button>
         <button class="btn perigo" id="btn-excluir-laudo">Excluir laudo</button>
@@ -190,9 +178,15 @@
 </div>
 
 <div id="toast"></div>
-<div id="relatorio"></div>
 
 <script>
+/* ============================================================
+   CONFIGURAÇÃO — cole aqui a URL do Apps Script (veja Codigo.gs).
+   Enquanto estiver "COLE_AQUI...", as fotos ficam só no celular e
+   só o envio manual pelo WhatsApp funciona.
+   ============================================================ */
+const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxI7WDDMlR1szxbf7KEcXmLCq_foRJCFm0KW6yRHIsWdS_aCKdRdM1rl5HAtaz_HLS5Uw/exec";
+
 /* ============================================================
    ITENS DO CONTRATO — para incluir/alterar itens, edite esta lista.
    ============================================================ */
@@ -304,6 +298,12 @@ async function processarFoto(file, linhas, maxLado = 1600, qualidade = 0.75) {
   return c.toDataURL('image/jpeg', qualidade);
 }
 
+/* ---------- Nome de quem tira as fotos (fica neste celular) ---------- */
+const campoNome = document.getElementById('nome-resp');
+try { campoNome.value = localStorage.getItem('evid_nome') || ''; } catch (e) {}
+campoNome.addEventListener('input', () => { try { localStorage.setItem('evid_nome', campoNome.value.trim()); } catch (e) {} });
+const nomeResp = () => campoNome.value.trim();
+
 /* ---------- Navegação entre telas ---------- */
 let laudoAtual = null;   // objeto do laudo aberto
 let editandoId = null;   // id do laudo em edição (null = novo)
@@ -400,7 +400,8 @@ async function renderLaudo() {
       if (f) {
         qtd++;
         return `<div class="slot tem" data-item="${esc(n)}" data-etapa="${et.id}">
-          <img src="${f.base64}" alt=""><div class="etq">✅ ${et.rot}</div></div>`;
+          <img src="${f.base64}" alt=""><div class="etq">✅ ${et.rot}</div>
+          <span class="nuvem ${f.status === 'enviado' ? 'env' : 'pend'}">${f.status === 'enviado' ? '☁️ enviada' : '⏳'}</span></div>`;
       }
       return `<div class="slot" data-item="${esc(n)}" data-etapa="${et.id}"><div class="ico">📷</div>${et.rot}</div>`;
     }).join('');
@@ -422,6 +423,11 @@ async function renderLaudo() {
   document.getElementById('laudo-progresso').textContent =
     feitas >= total ? `✅ Todas as ${total} fotos feitas.` : `${feitas} de ${total} fotos feitas — faltam ${total - feitas}.`;
 
+  const doLaudo = fotos.filter(f => l.itens.includes(f.item));
+  const pend = doLaudo.filter(f => f.status !== 'enviado').length;
+  document.getElementById('envio-status').innerHTML = doLaudo.length === 0 ? '' :
+    (pend === 0 ? '☁️ <b>Todas as fotos já foram enviadas ao medidor.</b>'
+                : `⏳ <b>${pend} foto(s) aguardando envio</b> — vão sozinhas quando tiver internet.`);
   document.querySelectorAll('#lista-itens .slot').forEach(s => s.addEventListener('click', () => {
     const item = s.dataset.item, etapa = s.dataset.etapa;
     if (s.classList.contains('tem')) abrirModal(item, etapa);
@@ -433,6 +439,11 @@ async function renderLaudo() {
 /* ---------- Captura de foto ---------- */
 let alvoFoto = null; // {item, etapa}
 function pedirFoto(item, etapa, origem) {
+  if (!nomeResp()) {
+    alert('Antes de fotografar, informe seu nome na tela inicial (campo "Seu nome").');
+    irParaLista(); setTimeout(() => campoNome.focus(), 300);
+    return;
+  }
   alvoFoto = { item, etapa };
   document.getElementById(origem === 'galeria' ? 'galeria-input' : 'foto-input').click();
 }
@@ -450,10 +461,12 @@ async function receberArquivo(e) {
       `ITEM ${item} · ${et.rot}`,
       `${fmtDataHora(quando)} · ${textoLocal(laudoAtual)}`
     ]);
-    await dbPut('fotos', { chave: chaveFoto(laudoAtual.id, item, etapa), laudoId: laudoAtual.id, item, etapa, base64, dataHora: quando });
+    await dbPut('fotos', { chave: chaveFoto(laudoAtual.id, item, etapa), laudoId: laudoAtual.id, item, etapa, base64,
+                           dataHora: quando, responsavel: nomeResp(), status: 'pendente' });
     fecharModal();
     await renderLaudo();
     toast(`✅ Item ${item} — ${et.rot} salvo.`);
+    if (navigator.onLine) sincronizarTudo();
   } catch (err) {
     console.error(err);
     alert('Não consegui processar a foto: ' + err.message);
@@ -490,49 +503,6 @@ document.getElementById('btn-excluir-laudo').addEventListener('click', async () 
   await dbDel('laudos', laudoAtual.id);
   toast('Laudo excluído.');
   irParaLista();
-});
-
-/* ---------- Relatório fotográfico (PDF pela impressão) ---------- */
-document.getElementById('btn-relatorio').addEventListener('click', async () => {
-  const l = laudoAtual;
-  const fotos = await fotosDoLaudo(l.id);
-  const mapa = {}; fotos.forEach(f => { mapa[f.chave] = f; });
-  const faltando = [];
-  const paginas = l.itens.map(n => {
-    const it = itemPorNum(n);
-    const quadros = ETAPAS.map((et, idx) => {
-      const f = mapa[chaveFoto(l.id, n, et.id)];
-      if (!f) faltando.push(`Item ${n} - ${et.rot}`);
-      return `<div class="r-foto ${idx === 2 ? 'cheia' : ''}">
-        <div class="img">${f ? `<img src="${f.base64}">` : '<span class="sem">SEM FOTO</span>'}</div>
-        <div class="leg"><b>${et.rot}</b> — ${esc(it.d)}${f ? ` · ${fmtDataHora(f.dataHora)}` : ''}</div>
-      </div>`;
-    }).join('');
-    return `<div class="pag">
-      <table class="r-tab">
-        <tr><td class="r-logo" rowspan="2"><img src="./logo.png" alt=""></td><td class="r-titulo">RELATÓRIO FOTOGRÁFICO</td></tr>
-        <tr><td style="text-align:center;"><b>ATIVIDADE:</b> EVIDÊNCIAS DAS ATIVIDADES</td></tr>
-      </table>
-      <table class="r-tab" style="border-top:none;">
-        <tr><td class="r-rot">ITEM</td><td style="width:14mm;text-align:center;font-weight:700;">${esc(n)}</td><td>${esc(it.d)}</td></tr>
-        <tr><td class="r-rot">LOCAL:</td><td colspan="2">${esc(textoLocal(l))}</td></tr>
-      </table>
-      <div class="r-fotos">${quadros}</div>
-      <table class="r-tab r-ass">
-        <tr><td class="vert" rowspan="3">A<br>S<br>S<br>I<br>N<br>A<br>T<br>U<br>R<br>A<br>S</td><td class="nome">GESTOR OMEGA</td><td></td></tr>
-        <tr><td class="nome">FISCALIZAÇÃO VALE</td><td></td></tr>
-        <tr><td class="nome">GESTOR VALE</td><td></td></tr>
-      </table>
-    </div>`;
-  }).join('');
-  if (faltando.length && !confirm(`Faltam ${faltando.length} foto(s):\n\n${faltando.join('\n')}\n\nGerar o relatório assim mesmo?`)) return;
-  const rel = document.getElementById('relatorio');
-  rel.innerHTML = paginas;
-  // espera as imagens carregarem antes de abrir a impressão
-  await Promise.all(Array.from(rel.querySelectorAll('img')).map(im => im.complete ? 0 : new Promise(r => { im.onload = im.onerror = r; })));
-  const tituloAnt = document.title;
-  document.title = `RELATORIO_FOTOGRAFICO_${l.tag}${l.laudo ? '_LAUDO_' + l.laudo : ''}`.replace(/[^\w.-]+/g, '_');
-  setTimeout(() => { window.print(); document.title = tituloAnt; }, 300);
 });
 
 /* ---------- Baixar / compartilhar todas as fotos ---------- */
@@ -604,8 +574,71 @@ ${ETAPAS.map(et => (fotos.some(p => p.item === n && p.etapa === et.id) ? '✅ ' 
   await compartilharOuBaixar([arq], 'Item ' + n, texto);
 }
 
+/* ---------- Envio automático para o medidor (Google Drive via Apps Script) ---------- */
+async function enviarFoto(f, laudo) {
+  if (APPS_SCRIPT_URL.includes('COLE_AQUI')) throw new Error('URL do Apps Script não configurada.');
+  const it = itemPorNum(f.item);
+  const et = ETAPAS.find(e => e.id === f.etapa);
+  const corpo = {
+    tag: laudo.tag, laudo: laudo.laudo || '', local: textoLocal(laudo),
+    item: f.item, descricao: it.d, etapa: et.rot, ordem: et.ord,
+    dataHora: fmtDataHora(f.dataHora), responsavel: f.responsavel || nomeResp(),
+    nomeArquivo: `ITEM_${f.item}_${et.ord}_${et.rot}.jpg`,
+    base64: f.base64.split(',')[1]
+  };
+  const r = await fetch(APPS_SCRIPT_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // evita preflight CORS
+    body: JSON.stringify(corpo)
+  });
+  if (!r.ok) throw new Error('Servidor respondeu ' + r.status);
+  const json = await r.json();
+  if (!json.ok) throw new Error(json.erro || 'Falha ao gravar no Drive');
+}
+
+let sincronizando = false;
+async function sincronizarTudo(manual = false) {
+  if (sincronizando) return;
+  sincronizando = true;
+  let enviadas = 0, erro = null;
+  try {
+    const laudos = {}; (await dbAll('laudos')).forEach(l => { laudos[l.id] = l; });
+    const pendentes = (await dbAll('fotos')).filter(f => f.status !== 'enviado' && laudos[f.laudoId] && laudos[f.laudoId].itens.includes(f.item));
+    for (const f of pendentes) {
+      await enviarFoto(f, laudos[f.laudoId]);
+      // só marca como enviada se a foto não foi trocada enquanto subia
+      const atual = await dbGet('fotos', f.chave);
+      if (atual && atual.dataHora === f.dataHora && atual.base64.length === f.base64.length) {
+        atual.status = 'enviado'; await dbPut('fotos', atual);
+      }
+      enviadas++;
+    }
+  } catch (e) { erro = e; console.warn('Envio interrompido:', e.message); }
+  sincronizando = false;
+  if (laudoAtual) await renderLaudo(); else await renderLista();
+  if (manual) {
+    if (erro) toast('Não enviou: ' + erro.message, 4000);
+    else toast(enviadas ? `☁️ ${enviadas} foto(s) enviada(s).` : 'Nada pendente.');
+  }
+}
+document.getElementById('btn-sincronizar').addEventListener('click', () => {
+  if (!navigator.onLine) { toast('Sem internet agora. Envia sozinho quando voltar.'); return; }
+  toast('Enviando...', 1500); sincronizarTudo(true);
+});
+window.addEventListener('online', () => { atualizarStatusBar(); sincronizarTudo(); });
+window.addEventListener('offline', atualizarStatusBar);
+setInterval(() => { if (navigator.onLine) sincronizarTudo(); }, 60000);
+
+function atualizarStatusBar() {
+  const bar = document.getElementById('status-bar'), txt = document.getElementById('status-texto');
+  if (navigator.onLine) { bar.className = 'online'; txt.textContent = 'Com internet — fotos são enviadas ao medidor'; }
+  else { bar.className = 'offline'; txt.textContent = 'Sem internet — fotos ficam guardadas e vão depois'; }
+}
+
 /* ---------- Início ---------- */
+atualizarStatusBar();
 irParaLista();
+if (navigator.onLine) sincronizarTudo();
 </script>
 </body>
 </html>
