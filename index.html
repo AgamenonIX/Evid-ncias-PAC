@@ -1,0 +1,611 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<meta name="theme-color" content="#9B142D">
+<title>Evidências de Campo</title>
+<link rel="manifest" href="./manifest.json">
+<link rel="icon" href="./logo.png">
+<link rel="apple-touch-icon" href="./logo.png">
+<style>
+  :root{
+    --vinho:#9B142D;
+    --vinho-esc:#7a0f23;
+    --azul:#1e3a5f;
+    --azul-claro:#2d5586;
+    --verde:#22c55e;
+    --verde-esc:#16a34a;
+    --vermelho:#dc2626;
+    --amarelo:#f59e0b;
+    --cinza-bg:#f1f5f9;
+    --cinza-borda:#cbd5e1;
+    --texto:#1e293b;
+    --texto-claro:#64748b;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:var(--cinza-bg);color:var(--texto);padding-bottom:40px;}
+  header{background:var(--vinho);color:#fff;padding:14px 16px;position:sticky;top:0;z-index:10;box-shadow:0 2px 8px rgba(0,0,0,.15);display:flex;align-items:center;gap:12px;}
+  header .voltar{background:none;border:none;color:#fff;font-size:24px;padding:0 6px 0 0;cursor:pointer;display:none;}
+  header h1{margin:0;font-size:18px;font-weight:600;}
+  header p{margin:3px 0 0;font-size:12.5px;opacity:.85;}
+  main{max-width:680px;margin:0 auto;padding:14px;}
+  .card{background:#fff;border-radius:12px;padding:14px;margin-bottom:12px;box-shadow:0 1px 3px rgba(0,0,0,.08);}
+  label{display:block;font-weight:600;font-size:14px;margin-bottom:6px;}
+  .campo{margin-bottom:14px;}
+  input[type=text],input[type=date]{width:100%;padding:12px;font-size:16px;border:1.5px solid var(--cinza-borda);border-radius:8px;background:#fff;color:var(--texto);font-family:inherit;}
+  input:focus{outline:2px solid var(--azul-claro);border-color:var(--azul-claro);}
+  .btn{display:block;width:100%;padding:15px;border:none;border-radius:10px;font-size:16px;font-weight:700;cursor:pointer;color:#fff;background:var(--azul-claro);margin-top:8px;}
+  .btn.verde{background:var(--verde);} .btn.verde:active{background:var(--verde-esc);}
+  .btn.vinho{background:var(--vinho);}
+  .btn.claro{background:#fff;color:var(--azul);border:1.5px solid var(--cinza-borda);}
+  .btn.perigo{background:#fff;color:var(--vermelho);border:1.5px solid #fecaca;}
+  .linha-btn{display:flex;gap:8px;} .linha-btn .btn{flex:1;}
+  .dica{font-size:12.5px;color:var(--texto-claro);margin:4px 0 0;line-height:1.45;}
+
+  /* lista de laudos */
+  .laudo-item{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:12px 0;border-bottom:1px solid #eef2f6;cursor:pointer;}
+  .laudo-item:last-child{border-bottom:none;}
+  .laudo-titulo{font-weight:700;font-size:14.5px;}
+  .laudo-sub{font-size:12px;color:var(--texto-claro);margin-top:2px;}
+  .badge{padding:4px 10px;border-radius:20px;font-size:12px;font-weight:700;white-space:nowrap;}
+  .badge.ok{background:#dcfce7;color:#166534;}
+  .badge.parcial{background:#fef3c7;color:#92400e;}
+  .badge.zero{background:#fee2e2;color:#991b1b;}
+  #vazio{color:var(--texto-claro);font-size:13.5px;text-align:center;padding:8px 0;}
+
+  /* seleção de itens */
+  .chk{display:flex;gap:10px;align-items:flex-start;padding:10px 0;border-bottom:1px solid #eef2f6;font-size:14px;}
+  .chk:last-child{border-bottom:none;}
+  .chk input{width:22px;height:22px;flex:none;margin-top:1px;}
+  .chk b{color:var(--vinho);}
+
+  /* item com 3 fotos */
+  .item-cab{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:10px;}
+  .item-num{font-weight:800;color:var(--vinho);font-size:15px;}
+  .item-desc{font-size:13.5px;line-height:1.35;margin-top:2px;}
+  .slots{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;}
+  .slot{position:relative;aspect-ratio:3/4;border-radius:10px;border:2px dashed var(--cinza-borda);background:#f8fafc;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;overflow:hidden;font-size:12.5px;font-weight:700;color:var(--texto-claro);text-align:center;padding:4px;}
+  .slot .ico{font-size:26px;margin-bottom:4px;}
+  .slot.tem{border:2px solid var(--verde);padding:0;}
+  .slot img{width:100%;height:100%;object-fit:cover;display:block;}
+  .slot .etq{position:absolute;left:0;right:0;bottom:0;background:rgba(0,0,0,.6);color:#fff;font-size:11.5px;padding:4px 2px;}
+  .acoes-item{display:flex;gap:8px;margin-top:10px;}
+  .btn-mini{flex:1;padding:9px;border-radius:7px;border:none;font-size:13px;font-weight:600;cursor:pointer;}
+  .btn-zap{background:#25d366;color:#fff;}
+
+  /* modal da foto */
+  #modal{position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:50;display:none;flex-direction:column;align-items:center;justify-content:center;padding:14px;}
+  #modal img{max-width:100%;max-height:70vh;border-radius:8px;}
+  #modal .linha-btn{width:100%;max-width:480px;margin-top:12px;}
+
+  #toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:#1e293b;color:#fff;padding:10px 16px;border-radius:8px;font-size:14px;z-index:60;display:none;max-width:90%;text-align:center;}
+
+  .tela{display:none;} .tela.ativa{display:block;}
+
+  /* ---------- RELATÓRIO (só aparece na impressão / PDF) ---------- */
+  #relatorio{display:none;}
+  @media print{
+    @page{size:A4 portrait;margin:8mm;}
+    body{background:#fff;padding:0;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+    header,main,#modal,#toast{display:none !important;}
+    #relatorio{display:block;}
+    .pag{page-break-after:always;break-after:page;width:194mm;height:280mm;display:flex;flex-direction:column;font-family:Arial,sans-serif;color:#000;}
+    .pag:last-child{page-break-after:auto;break-after:auto;}
+  }
+  .r-tab{width:100%;border-collapse:collapse;font-size:10pt;}
+  .r-tab td{border:1px solid #000;padding:4px 6px;vertical-align:middle;}
+  .r-logo{width:34mm;text-align:center;} .r-logo img{height:18mm;}
+  .r-titulo{text-align:center;font-weight:700;font-size:15pt;}
+  .r-rot{font-weight:700;width:24mm;white-space:nowrap;}
+  .r-fotos{flex:1;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:3mm;padding:3mm 0;min-height:0;}
+  .r-foto{border:1px solid #000;display:flex;flex-direction:column;min-height:0;}
+  .r-foto.cheia{grid-column:1 / span 2;}
+  .r-foto .img{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;background:#fff;}
+  .r-foto .img img{max-width:100%;max-height:100%;object-fit:contain;}
+  .r-foto .sem{color:#999;font-size:11pt;}
+  .r-foto .leg{border-top:1px solid #000;font-size:8.5pt;padding:2px 4px;text-align:center;}
+  .r-foto .leg b{font-size:9.5pt;}
+  .r-ass td{height:9mm;}
+  .r-ass .vert{width:8mm;text-align:center;font-weight:700;font-size:8pt;line-height:1.05;}
+  .r-ass .nome{width:48mm;font-weight:700;font-size:9pt;}
+</style>
+</head>
+<body>
+
+<header>
+  <button class="voltar" id="btn-voltar" aria-label="Voltar">‹</button>
+  <div>
+    <h1 id="h-titulo">Evidências de Campo</h1>
+    <p id="h-sub">Omega Service — Relatório Fotográfico</p>
+  </div>
+</header>
+
+<main>
+
+  <!-- ================= TELA 1: LISTA DE LAUDOS ================= -->
+  <section id="tela-lista" class="tela ativa">
+    <div class="card">
+      <label style="margin-bottom:2px;">Laudos / locais</label>
+      <p class="dica">Cada laudo guarda as fotos ANTES, DURANTE e DEPOIS de cada item. As fotos ficam salvas neste celular, mesmo sem internet.</p>
+      <div id="lista-laudos" style="margin-top:8px;"><div id="vazio">Nenhum laudo cadastrado ainda.</div></div>
+      <button class="btn vinho" id="btn-novo">＋ Novo laudo</button>
+    </div>
+  </section>
+
+  <!-- ================= TELA 2: NOVO / EDITAR LAUDO ================= -->
+  <section id="tela-form" class="tela">
+    <form id="form-laudo" class="card" autocomplete="off">
+      <div class="campo">
+        <label>Equipamento / TAG *</label>
+        <input type="text" name="tag" required placeholder="Ex: CT1083KS01">
+      </div>
+      <div class="campo">
+        <label>Nº do laudo</label>
+        <input type="text" name="laudo" inputmode="numeric" placeholder="Ex: 202401715104">
+      </div>
+      <div class="campo">
+        <label>Itens que precisam de evidência *</label>
+        <div id="lista-chk"></div>
+      </div>
+      <button type="submit" class="btn verde" id="btn-salvar-laudo">Salvar laudo</button>
+    </form>
+  </section>
+
+  <!-- ================= TELA 3: FOTOS DO LAUDO ================= -->
+  <section id="tela-laudo" class="tela">
+    <div class="card" style="padding:12px 14px;">
+      <div style="font-size:12.5px;color:var(--texto-claro);">LOCAL</div>
+      <div id="laudo-local" style="font-weight:700;font-size:15px;"></div>
+      <div id="laudo-progresso" class="dica"></div>
+    </div>
+    <div id="lista-itens"></div>
+    <div class="card">
+      <button class="btn verde" id="btn-relatorio">📄 Gerar relatório (PDF)</button>
+      <p class="dica">Abre a tela de impressão. Escolha <b>"Salvar como PDF"</b>. Uma página por item, com as 3 fotos e o quadro de assinaturas.</p>
+      <button class="btn claro" id="btn-exportar">⬇️ Baixar / compartilhar todas as fotos</button>
+      <p class="dica">Nomes no padrão ITEM_36_1_ANTES.jpg — prontos para colar na planilha de evidências.</p>
+      <div class="linha-btn">
+        <button class="btn claro" id="btn-editar">✏️ Editar laudo</button>
+        <button class="btn perigo" id="btn-excluir-laudo">Excluir laudo</button>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<input type="file" id="foto-input" accept="image/*" capture="environment" style="display:none">
+<input type="file" id="galeria-input" accept="image/*" style="display:none">
+
+<div id="modal">
+  <img id="modal-img" alt="">
+  <div class="linha-btn">
+    <button class="btn" id="m-camera">📷 Tirar outra</button>
+    <button class="btn claro" id="m-galeria">🖼️ Galeria</button>
+  </div>
+  <div class="linha-btn">
+    <button class="btn perigo" id="m-excluir">Excluir foto</button>
+    <button class="btn claro" id="m-fechar">Fechar</button>
+  </div>
+</div>
+
+<div id="toast"></div>
+<div id="relatorio"></div>
+
+<script>
+/* ============================================================
+   ITENS DO CONTRATO — para incluir/alterar itens, edite esta lista.
+   ============================================================ */
+const ITENS = [
+  { n: '31', d: 'Área Industrial - Limpeza com solvente Petrobrás N5a.' },
+  { n: '32', d: 'Área Industrial - Limpeza com ferramenta manual grau St2.' },
+  { n: '33', d: 'Área Industrial - Limpeza com ferramentas mecânicas grau St3.' },
+  { n: '34', d: 'A05 - Tinta poliuretano acrílico alinfático, considerando 60 µm de espessura seca.' },
+  { n: '35', d: 'Tinta Epoxi 180 micra para ambiente C3H - primer Wegpoxi CVD 323, Jotamastic 90, Sumadur FC HS Plus, Intergard 251HS e Revran TF PNA HB 870, considerando 180 µm de espessura seca.' },
+  { n: '36', d: 'Área Industrial - Jateamento abrasivo padrão Sa 1.' },
+  { n: '37', d: 'Área Industrial - Jateamento abrasivo ao metal quase branco padrão Sa 2.1/2.' },
+  { n: '38', d: 'Área Industrial - Lavagem com água doce em alta pressão.' }
+];
+const ETAPAS = [
+  { id: 'antes',   rot: 'ANTES',   ord: 1 },
+  { id: 'durante', rot: 'DURANTE', ord: 2 },
+  { id: 'depois',  rot: 'DEPOIS',  ord: 3 }
+];
+
+/* ---------- Service Worker (abre offline) ---------- */
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(e => console.error('SW:', e)));
+}
+// Pede ao navegador para não apagar as fotos sozinho quando faltar espaço
+if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
+
+/* ---------- IndexedDB ---------- */
+let dbPromise = null;
+function abrirDB() {
+  if (dbPromise) return dbPromise;
+  dbPromise = new Promise((resolve, reject) => {
+    const req = indexedDB.open('evidenciasDB', 1);
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains('laudos')) db.createObjectStore('laudos', { keyPath: 'id' });
+      if (!db.objectStoreNames.contains('fotos')) {
+        const st = db.createObjectStore('fotos', { keyPath: 'chave' });
+        st.createIndex('laudoId', 'laudoId', { unique: false });
+      }
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+  return dbPromise;
+}
+async function tx(store, modo, fn) {
+  const db = await abrirDB();
+  return new Promise((resolve, reject) => {
+    const t = db.transaction(store, modo);
+    const st = t.objectStore(store);
+    let resultado;
+    const r = fn(st);
+    if (r) r.onsuccess = () => { resultado = r.result; };
+    t.oncomplete = () => resolve(resultado);
+    t.onerror = () => reject(t.error);
+  });
+}
+const dbPut     = (store, obj) => tx(store, 'readwrite', st => st.put(obj));
+const dbGet     = (store, k)   => tx(store, 'readonly',  st => st.get(k));
+const dbDel     = (store, k)   => tx(store, 'readwrite', st => st.delete(k));
+const dbAll     = (store)      => tx(store, 'readonly',  st => st.getAll());
+const fotosDoLaudo = (laudoId) => tx('fotos', 'readonly', st => st.index('laudoId').getAll(laudoId));
+const chaveFoto = (laudoId, item, etapa) => `${laudoId}|${item}|${etapa}`;
+
+/* ---------- Utilidades ---------- */
+function esc(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+}
+function toast(txt, ms = 2500) {
+  const t = document.getElementById('toast');
+  t.textContent = txt; t.style.display = 'block';
+  clearTimeout(toast._t); toast._t = setTimeout(() => { t.style.display = 'none'; }, ms);
+}
+const dd = n => String(n).padStart(2, '0');
+function fmtDataHora(ms) {
+  const d = new Date(ms);
+  return `${dd(d.getDate())}/${dd(d.getMonth()+1)}/${d.getFullYear()} ${dd(d.getHours())}:${dd(d.getMinutes())}`;
+}
+function textoLocal(l) { return l.laudo ? `${l.tag} (LAUDO: ${l.laudo})` : l.tag; }
+const itemPorNum = n => ITENS.find(i => i.n === n) || { n, d: '' };
+
+/* ---------- Foto: reduz tamanho e grava carimbo (item, etapa, data/hora, local) ---------- */
+function carregarImagem(src) {
+  return new Promise((resolve, reject) => { const i = new Image(); i.onload = () => resolve(i); i.onerror = reject; i.src = src; });
+}
+function lerArquivo(file) {
+  return new Promise((resolve, reject) => { const r = new FileReader(); r.onload = e => resolve(e.target.result); r.onerror = reject; r.readAsDataURL(file); });
+}
+async function processarFoto(file, linhas, maxLado = 1600, qualidade = 0.75) {
+  const img = await carregarImagem(await lerArquivo(file));
+  let w = img.width, h = img.height;
+  if (w >= h && w > maxLado) { h = Math.round(h * maxLado / w); w = maxLado; }
+  else if (h > w && h > maxLado) { w = Math.round(w * maxLado / h); h = maxLado; }
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  const ctx = c.getContext('2d');
+  ctx.drawImage(img, 0, 0, w, h);
+  // carimbo no rodapé da foto
+  const fs = Math.max(14, Math.round(Math.min(w, h) / 30));
+  const pad = Math.round(fs * 0.5);
+  const alturaFaixa = linhas.length * (fs + pad) + pad;
+  ctx.fillStyle = 'rgba(0,0,0,0.55)';
+  ctx.fillRect(0, h - alturaFaixa, w, alturaFaixa);
+  ctx.fillStyle = '#fff';
+  ctx.textBaseline = 'top';
+  linhas.forEach((txt, i) => {
+    ctx.font = `${i === 0 ? 'bold ' : ''}${fs}px Arial, sans-serif`;
+    ctx.fillText(txt, pad, h - alturaFaixa + pad + i * (fs + pad), w - 2 * pad);
+  });
+  return c.toDataURL('image/jpeg', qualidade);
+}
+
+/* ---------- Navegação entre telas ---------- */
+let laudoAtual = null;   // objeto do laudo aberto
+let editandoId = null;   // id do laudo em edição (null = novo)
+function mostrarTela(id, titulo, sub) {
+  document.querySelectorAll('.tela').forEach(t => t.classList.remove('ativa'));
+  document.getElementById(id).classList.add('ativa');
+  document.getElementById('h-titulo').textContent = titulo;
+  document.getElementById('h-sub').textContent = sub;
+  document.getElementById('btn-voltar').style.display = id === 'tela-lista' ? 'none' : 'block';
+  window.scrollTo(0, 0);
+}
+document.getElementById('btn-voltar').addEventListener('click', () => {
+  if (document.getElementById('tela-form').classList.contains('ativa') && editandoId) abrirLaudo(editandoId);
+  else irParaLista();
+});
+async function irParaLista() {
+  laudoAtual = null;
+  mostrarTela('tela-lista', 'Evidências de Campo', 'Omega Service — Relatório Fotográfico');
+  await renderLista();
+}
+
+/* ---------- Tela 1: lista ---------- */
+async function contarFotos(laudo) {
+  const fotos = await fotosDoLaudo(laudo.id);
+  const validas = fotos.filter(f => laudo.itens.includes(f.item));
+  return { feitas: validas.length, total: laudo.itens.length * ETAPAS.length };
+}
+async function renderLista() {
+  const laudos = (await dbAll('laudos')).sort((a, b) => b.criadoEm - a.criadoEm);
+  const cont = document.getElementById('lista-laudos');
+  if (laudos.length === 0) { cont.innerHTML = '<div id="vazio">Nenhum laudo cadastrado ainda.</div>'; return; }
+  const linhas = [];
+  for (const l of laudos) {
+    const { feitas, total } = await contarFotos(l);
+    const cls = feitas === 0 ? 'zero' : (feitas >= total ? 'ok' : 'parcial');
+    linhas.push(`<div class="laudo-item" data-id="${esc(l.id)}">
+      <div><div class="laudo-titulo">${esc(textoLocal(l))}</div>
+      <div class="laudo-sub">Itens: ${l.itens.map(esc).join(', ')} · criado em ${fmtDataHora(l.criadoEm)}</div></div>
+      <span class="badge ${cls}">${feitas}/${total} fotos</span></div>`);
+  }
+  cont.innerHTML = linhas.join('');
+  cont.querySelectorAll('.laudo-item').forEach(el => el.addEventListener('click', () => abrirLaudo(el.dataset.id)));
+}
+document.getElementById('btn-novo').addEventListener('click', () => abrirForm(null));
+
+/* ---------- Tela 2: novo / editar laudo ---------- */
+function abrirForm(laudo) {
+  editandoId = laudo ? laudo.id : null;
+  const f = document.getElementById('form-laudo');
+  f.tag.value = laudo ? laudo.tag : '';
+  f.laudo.value = laudo ? (laudo.laudo || '') : '';
+  const marcados = laudo ? laudo.itens : [];
+  document.getElementById('lista-chk').innerHTML = ITENS.map(i => `
+    <label class="chk" style="font-weight:400;margin:0;">
+      <input type="checkbox" value="${esc(i.n)}" ${marcados.includes(i.n) ? 'checked' : ''}>
+      <span><b>${esc(i.n)}</b> — ${esc(i.d)}</span>
+    </label>`).join('');
+  mostrarTela('tela-form', laudo ? 'Editar laudo' : 'Novo laudo', 'Escolha os itens que precisam de evidência');
+}
+document.getElementById('form-laudo').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const f = e.target;
+  const itens = Array.from(document.querySelectorAll('#lista-chk input:checked')).map(c => c.value);
+  if (!f.tag.value.trim()) { toast('Informe o equipamento / TAG.'); return; }
+  if (itens.length === 0) { toast('Marque pelo menos 1 item.'); return; }
+  const base = editandoId ? await dbGet('laudos', editandoId) : { id: 'laudo_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7), criadoEm: Date.now() };
+  base.tag = f.tag.value.trim();
+  base.laudo = f.laudo.value.trim();
+  base.itens = itens.sort((a, b) => Number(a) - Number(b));
+  await dbPut('laudos', base);
+  toast('✅ Laudo salvo.');
+  abrirLaudo(base.id);
+});
+
+/* ---------- Tela 3: fotos do laudo ---------- */
+async function abrirLaudo(id) {
+  laudoAtual = await dbGet('laudos', id);
+  if (!laudoAtual) { irParaLista(); return; }
+  editandoId = null;
+  mostrarTela('tela-laudo', laudoAtual.tag, 'Toque em ANTES / DURANTE / DEPOIS para fotografar');
+  await renderLaudo();
+}
+async function renderLaudo() {
+  const l = laudoAtual;
+  document.getElementById('laudo-local').textContent = textoLocal(l);
+  const fotos = await fotosDoLaudo(l.id);
+  const mapa = {}; fotos.forEach(f => { mapa[f.chave] = f; });
+  let feitas = 0;
+  const html = l.itens.map(n => {
+    const it = itemPorNum(n);
+    let qtd = 0;
+    const slots = ETAPAS.map(et => {
+      const f = mapa[chaveFoto(l.id, n, et.id)];
+      if (f) {
+        qtd++;
+        return `<div class="slot tem" data-item="${esc(n)}" data-etapa="${et.id}">
+          <img src="${f.base64}" alt=""><div class="etq">✅ ${et.rot}</div></div>`;
+      }
+      return `<div class="slot" data-item="${esc(n)}" data-etapa="${et.id}"><div class="ico">📷</div>${et.rot}</div>`;
+    }).join('');
+    feitas += qtd;
+    const cls = qtd === 0 ? 'zero' : (qtd === 3 ? 'ok' : 'parcial');
+    return `<div class="card">
+      <div class="item-cab">
+        <div><div class="item-num">ITEM ${esc(n)}</div><div class="item-desc">${esc(it.d)}</div></div>
+        <span class="badge ${cls}">${qtd}/3</span>
+      </div>
+      <div class="slots">${slots}</div>
+      <div class="acoes-item">
+        <button class="btn-mini btn-zap" data-zap="${esc(n)}" ${qtd === 0 ? 'disabled style="opacity:.5"' : ''}>📤 Enviar item no WhatsApp</button>
+      </div>
+    </div>`;
+  }).join('');
+  document.getElementById('lista-itens').innerHTML = html;
+  const total = l.itens.length * 3;
+  document.getElementById('laudo-progresso').textContent =
+    feitas >= total ? `✅ Todas as ${total} fotos feitas.` : `${feitas} de ${total} fotos feitas — faltam ${total - feitas}.`;
+
+  document.querySelectorAll('#lista-itens .slot').forEach(s => s.addEventListener('click', () => {
+    const item = s.dataset.item, etapa = s.dataset.etapa;
+    if (s.classList.contains('tem')) abrirModal(item, etapa);
+    else pedirFoto(item, etapa, 'camera');
+  }));
+  document.querySelectorAll('#lista-itens [data-zap]').forEach(b => b.addEventListener('click', () => compartilharItem(b.dataset.zap)));
+}
+
+/* ---------- Captura de foto ---------- */
+let alvoFoto = null; // {item, etapa}
+function pedirFoto(item, etapa, origem) {
+  alvoFoto = { item, etapa };
+  document.getElementById(origem === 'galeria' ? 'galeria-input' : 'foto-input').click();
+}
+async function receberArquivo(e) {
+  const file = e.target.files && e.target.files[0];
+  e.target.value = '';
+  if (!file || !alvoFoto || !laudoAtual) return;
+  const { item, etapa } = alvoFoto;
+  const et = ETAPAS.find(x => x.id === etapa);
+  // Foto da galeria: usa a data do arquivo; foto da câmera: agora
+  const quando = file.lastModified && Math.abs(Date.now() - file.lastModified) < 1000 * 60 * 60 * 24 * 365 ? file.lastModified : Date.now();
+  toast('Processando foto...', 1500);
+  try {
+    const base64 = await processarFoto(file, [
+      `ITEM ${item} · ${et.rot}`,
+      `${fmtDataHora(quando)} · ${textoLocal(laudoAtual)}`
+    ]);
+    await dbPut('fotos', { chave: chaveFoto(laudoAtual.id, item, etapa), laudoId: laudoAtual.id, item, etapa, base64, dataHora: quando });
+    fecharModal();
+    await renderLaudo();
+    toast(`✅ Item ${item} — ${et.rot} salvo.`);
+  } catch (err) {
+    console.error(err);
+    alert('Não consegui processar a foto: ' + err.message);
+  }
+}
+document.getElementById('foto-input').addEventListener('change', receberArquivo);
+document.getElementById('galeria-input').addEventListener('change', receberArquivo);
+
+/* ---------- Modal: ver / substituir / excluir foto ---------- */
+async function abrirModal(item, etapa) {
+  const f = await dbGet('fotos', chaveFoto(laudoAtual.id, item, etapa));
+  if (!f) return;
+  alvoFoto = { item, etapa };
+  document.getElementById('modal-img').src = f.base64;
+  document.getElementById('modal').style.display = 'flex';
+}
+function fecharModal() { document.getElementById('modal').style.display = 'none'; }
+document.getElementById('m-fechar').addEventListener('click', fecharModal);
+document.getElementById('m-camera').addEventListener('click', () => pedirFoto(alvoFoto.item, alvoFoto.etapa, 'camera'));
+document.getElementById('m-galeria').addEventListener('click', () => pedirFoto(alvoFoto.item, alvoFoto.etapa, 'galeria'));
+document.getElementById('m-excluir').addEventListener('click', async () => {
+  if (!confirm('Excluir esta foto?')) return;
+  await dbDel('fotos', chaveFoto(laudoAtual.id, alvoFoto.item, alvoFoto.etapa));
+  fecharModal();
+  await renderLaudo();
+});
+
+/* ---------- Editar / excluir laudo ---------- */
+document.getElementById('btn-editar').addEventListener('click', () => abrirForm(laudoAtual));
+document.getElementById('btn-excluir-laudo').addEventListener('click', async () => {
+  if (!confirm(`Excluir o laudo "${textoLocal(laudoAtual)}" e TODAS as fotos dele? Não dá para desfazer.`)) return;
+  const fotos = await fotosDoLaudo(laudoAtual.id);
+  for (const f of fotos) await dbDel('fotos', f.chave);
+  await dbDel('laudos', laudoAtual.id);
+  toast('Laudo excluído.');
+  irParaLista();
+});
+
+/* ---------- Relatório fotográfico (PDF pela impressão) ---------- */
+document.getElementById('btn-relatorio').addEventListener('click', async () => {
+  const l = laudoAtual;
+  const fotos = await fotosDoLaudo(l.id);
+  const mapa = {}; fotos.forEach(f => { mapa[f.chave] = f; });
+  const faltando = [];
+  const paginas = l.itens.map(n => {
+    const it = itemPorNum(n);
+    const quadros = ETAPAS.map((et, idx) => {
+      const f = mapa[chaveFoto(l.id, n, et.id)];
+      if (!f) faltando.push(`Item ${n} - ${et.rot}`);
+      return `<div class="r-foto ${idx === 2 ? 'cheia' : ''}">
+        <div class="img">${f ? `<img src="${f.base64}">` : '<span class="sem">SEM FOTO</span>'}</div>
+        <div class="leg"><b>${et.rot}</b> — ${esc(it.d)}${f ? ` · ${fmtDataHora(f.dataHora)}` : ''}</div>
+      </div>`;
+    }).join('');
+    return `<div class="pag">
+      <table class="r-tab">
+        <tr><td class="r-logo" rowspan="2"><img src="./logo.png" alt=""></td><td class="r-titulo">RELATÓRIO FOTOGRÁFICO</td></tr>
+        <tr><td style="text-align:center;"><b>ATIVIDADE:</b> EVIDÊNCIAS DAS ATIVIDADES</td></tr>
+      </table>
+      <table class="r-tab" style="border-top:none;">
+        <tr><td class="r-rot">ITEM</td><td style="width:14mm;text-align:center;font-weight:700;">${esc(n)}</td><td>${esc(it.d)}</td></tr>
+        <tr><td class="r-rot">LOCAL:</td><td colspan="2">${esc(textoLocal(l))}</td></tr>
+      </table>
+      <div class="r-fotos">${quadros}</div>
+      <table class="r-tab r-ass">
+        <tr><td class="vert" rowspan="3">A<br>S<br>S<br>I<br>N<br>A<br>T<br>U<br>R<br>A<br>S</td><td class="nome">GESTOR OMEGA</td><td></td></tr>
+        <tr><td class="nome">FISCALIZAÇÃO VALE</td><td></td></tr>
+        <tr><td class="nome">GESTOR VALE</td><td></td></tr>
+      </table>
+    </div>`;
+  }).join('');
+  if (faltando.length && !confirm(`Faltam ${faltando.length} foto(s):\n\n${faltando.join('\n')}\n\nGerar o relatório assim mesmo?`)) return;
+  const rel = document.getElementById('relatorio');
+  rel.innerHTML = paginas;
+  // espera as imagens carregarem antes de abrir a impressão
+  await Promise.all(Array.from(rel.querySelectorAll('img')).map(im => im.complete ? 0 : new Promise(r => { im.onload = im.onerror = r; })));
+  const tituloAnt = document.title;
+  document.title = `RELATORIO_FOTOGRAFICO_${l.tag}${l.laudo ? '_LAUDO_' + l.laudo : ''}`.replace(/[^\w.-]+/g, '_');
+  setTimeout(() => { window.print(); document.title = tituloAnt; }, 300);
+});
+
+/* ---------- Baixar / compartilhar todas as fotos ---------- */
+function dataURLparaFile(dataURL, nome) {
+  const [cab, b64] = dataURL.split(',');
+  const bin = atob(b64); const arr = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+  return new File([arr], nome, { type: cab.match(/:(.*?);/)[1] });
+}
+function baixar(arquivos) {
+  arquivos.forEach((arq, i) => setTimeout(() => {
+    const url = URL.createObjectURL(arq);
+    const a = document.createElement('a'); a.href = url; a.download = arq.name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+  }, i * 400));
+}
+async function compartilharOuBaixar(arquivos, titulo, texto) {
+  if (navigator.share && navigator.canShare && navigator.canShare({ files: arquivos })) {
+    try { await navigator.share({ title: titulo, text: texto, files: arquivos }); return; }
+    catch (err) { if (err.name === 'AbortError') return; }
+  }
+  baixar(arquivos);
+  toast('Fotos baixadas para a pasta Downloads.');
+}
+document.getElementById('btn-exportar').addEventListener('click', async () => {
+  const l = laudoAtual;
+  const fotos = (await fotosDoLaudo(l.id)).filter(f => l.itens.includes(f.item));
+  if (!fotos.length) { toast('Nenhuma foto neste laudo ainda.'); return; }
+  const ordem = id => ETAPAS.find(e => e.id === id);
+  fotos.sort((a, b) => Number(a.item) - Number(b.item) || ordem(a.etapa).ord - ordem(b.etapa).ord);
+  const arquivos = fotos.map(f => dataURLparaFile(f.base64, `ITEM_${f.item}_${ordem(f.etapa).ord}_${ordem(f.etapa).rot}.jpg`));
+  await compartilharOuBaixar(arquivos, 'Evidências ' + l.tag, textoLocal(l));
+});
+
+/* ---------- WhatsApp: 1 item = colagem ANTES | DURANTE | DEPOIS + texto ---------- */
+async function compartilharItem(n) {
+  const l = laudoAtual, it = itemPorNum(n);
+  const fotos = await fotosDoLaudo(l.id);
+  const lado = 700, gap = 8, cab = 56;
+  const c = document.createElement('canvas');
+  c.width = 3 * lado + 4 * gap; c.height = lado + cab + 2 * gap;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height);
+  for (let i = 0; i < ETAPAS.length; i++) {
+    const et = ETAPAS[i];
+    const x = gap + i * (lado + gap), y = gap;
+    ctx.fillStyle = '#9B142D'; ctx.fillRect(x, y, lado, cab);
+    ctx.fillStyle = '#fff'; ctx.font = 'bold 30px Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(et.rot, x + lado / 2, y + cab / 2);
+    const f = fotos.find(p => p.item === n && p.etapa === et.id);
+    if (f) {
+      const img = await carregarImagem(f.base64);
+      const s = Math.min(lado / img.width, lado / img.height);
+      const w = img.width * s, h = img.height * s;
+      ctx.fillStyle = '#000'; ctx.fillRect(x, y + cab, lado, lado);
+      ctx.drawImage(img, x + (lado - w) / 2, y + cab + (lado - h) / 2, w, h);
+    } else {
+      ctx.fillStyle = '#f1f5f9'; ctx.fillRect(x, y + cab, lado, lado);
+      ctx.fillStyle = '#94a3b8'; ctx.font = 'bold 34px Arial'; ctx.fillText('SEM FOTO', x + lado / 2, y + cab + lado / 2);
+    }
+  }
+  const blob = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.85));
+  const arq = new File([blob], `ITEM_${n}_${l.tag}.jpg`.replace(/[^\w.-]+/g, '_'), { type: 'image/jpeg' });
+  const texto = `📸 EVIDÊNCIAS DAS ATIVIDADES
+📍 Local: ${textoLocal(l)}
+📗 Item ${n}: ${it.d}
+${ETAPAS.map(et => (fotos.some(p => p.item === n && p.etapa === et.id) ? '✅ ' : '⏳ ') + et.rot).join('   ')}`;
+  await compartilharOuBaixar([arq], 'Item ' + n, texto);
+}
+
+/* ---------- Início ---------- */
+irParaLista();
+</script>
+</body>
+</html>
