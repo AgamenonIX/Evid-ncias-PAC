@@ -81,6 +81,13 @@
   #modal img{max-width:100%;max-height:70vh;border-radius:8px;}
   #modal .linha-btn{width:100%;max-width:480px;margin-top:12px;}
 
+  #escolha{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:55;display:none;align-items:flex-end;justify-content:center;}
+  #escolha .folha{background:#fff;width:100%;max-width:520px;border-radius:16px 16px 0 0;padding:16px 16px 22px;}
+  #escolha .tit{font-weight:700;font-size:15px;margin-bottom:4px;}
+  textarea.obs{width:100%;min-height:64px;padding:10px;font-size:15px;border:1.5px solid var(--cinza-borda);border-radius:8px;font-family:inherit;resize:vertical;margin-top:4px;}
+  textarea.obs:focus{outline:2px solid var(--azul-claro);border-color:var(--azul-claro);}
+  .obs-rot{display:flex;justify-content:space-between;font-size:12.5px;font-weight:800;color:var(--azul);margin-top:12px;}
+  .obs-rot span{font-weight:600;color:var(--texto-claro);}
   #toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:#1e293b;color:#fff;padding:10px 16px;border-radius:8px;font-size:14px;z-index:60;display:none;max-width:90%;text-align:center;}
 
   .tela{display:none;} .tela.ativa{display:block;}
@@ -165,13 +172,23 @@
 </main>
 
 <input type="file" id="foto-input" accept="image/*" capture="environment" style="display:none">
-<input type="file" id="galeria-input" accept="image/*" style="display:none">
+<input type="file" id="galeria-input" accept="image/*" multiple style="display:none">
+
+<div id="escolha">
+  <div class="folha">
+    <div class="tit" id="escolha-tit">Adicionar foto</div>
+    <p class="dica" style="margin:0 0 6px;">Pela galeria dá para marcar várias fotos de uma vez — elas preenchem os quadros vazios desta etapa.</p>
+    <button class="btn" id="e-camera">📷 Tirar foto agora</button>
+    <button class="btn claro" id="e-galeria">🖼️ Escolher da galeria</button>
+    <button class="btn claro" id="e-cancelar" style="border:none;color:var(--texto-claro);">Cancelar</button>
+  </div>
+</div>
 
 <div id="modal">
   <img id="modal-img" alt="">
   <div class="linha-btn">
     <button class="btn" id="m-camera">📷 Tirar outra</button>
-    <button class="btn claro" id="m-galeria">🖼️ Galeria</button>
+    <button class="btn claro" id="m-galeria">🖼️ Trocar pela galeria</button>
   </div>
   <div class="linha-btn">
     <button class="btn perigo" id="m-excluir">Excluir foto</button>
@@ -425,6 +442,8 @@ async function renderLaudo() {
         <span class="badge ${cls}">${qtd}/${tot}</span>
       </div>
       ${blocos}
+      <div class="obs-rot">OBSERVAÇÃO<span>${(l.obsPend || {})[n] ? '⏳ aguardando envio' : ((l.obs || {})[n] ? '☁️ enviada' : '')}</span></div>
+      <textarea class="obs" data-obs="${esc(n)}" placeholder="Ex.: área com acesso restrito, faltou andaime, retrabalho...">${esc((l.obs || {})[n] || '')}</textarea>
       <div class="acoes-item">
         <button class="btn-mini btn-zap" data-zap="${esc(n)}" ${qtd === 0 ? 'disabled style="opacity:.5"' : ''}>📤 Enviar item no WhatsApp</button>
       </div>
@@ -443,9 +462,40 @@ async function renderLaudo() {
   document.querySelectorAll('#lista-itens .slot').forEach(s => s.addEventListener('click', () => {
     const item = s.dataset.item, etapa = s.dataset.etapa, n = Number(s.dataset.n);
     if (s.classList.contains('tem')) abrirModal(item, etapa, n);
-    else pedirFoto(item, etapa, n, 'camera');
+    else abrirEscolha(item, etapa, n);
   }));
   document.querySelectorAll('#lista-itens [data-zap]').forEach(b => b.addEventListener('click', () => compartilharItem(b.dataset.zap)));
+  document.querySelectorAll('#lista-itens textarea.obs').forEach(t => {
+    t.addEventListener('input', () => salvarObs(t.dataset.obs, t.value, false));
+    t.addEventListener('change', () => salvarObs(t.dataset.obs, t.value, true));
+    t.addEventListener('blur', () => { if (precisaRender) { precisaRender = false; renderLaudo(); } });
+  });
+}
+
+/* ---------- Observação por item ---------- */
+let precisaRender = false;
+let obsTimer = null;
+// Não redesenha a tela enquanto a pessoa está digitando (senão o teclado fecha)
+function renderSeguro() {
+  const a = document.activeElement;
+  if (a && a.classList && a.classList.contains('obs')) { precisaRender = true; return; }
+  return laudoAtual ? renderLaudo() : renderLista();
+}
+async function salvarObs(item, texto, final) {
+  if (!laudoAtual) return;
+  clearTimeout(obsTimer);
+  const gravar = async () => {
+    const l = await dbGet('laudos', laudoAtual.id);
+    if (!l) return;
+    l.obs = l.obs || {}; l.obsPend = l.obsPend || {};
+    const novo = texto.trim();
+    if ((l.obs[item] || '') === novo) return;
+    l.obs[item] = novo; l.obsPend[item] = true;
+    await dbPut('laudos', l);
+    laudoAtual = l;
+    if (final && navigator.onLine) sincronizarTudo();
+  };
+  if (final) await gravar(); else obsTimer = setTimeout(gravar, 800);
 }
 
 /* ---------- Captura de foto ---------- */
@@ -456,14 +506,44 @@ function pedirFoto(item, etapa, n, origem) {
     irParaLista(); setTimeout(() => campoNome.focus(), 300);
     return;
   }
-  alvoFoto = { item, etapa, n };
+  alvoFoto = { item, etapa, n, troca: !!(alvoFoto && alvoFoto.troca && alvoFoto.item === item && alvoFoto.etapa === etapa && alvoFoto.n === n) };
   document.getElementById(origem === 'galeria' ? 'galeria-input' : 'foto-input').click();
 }
+function abrirEscolha(item, etapa, n) {
+  const et = ETAPAS.find(x => x.id === etapa);
+  alvoFoto = { item, etapa, n, troca: false };
+  document.getElementById('escolha-tit').textContent = `Item ${item} — ${et.rot} ${n}`;
+  document.getElementById('escolha').style.display = 'flex';
+}
+function fecharEscolha() { document.getElementById('escolha').style.display = 'none'; }
+document.getElementById('e-cancelar').addEventListener('click', fecharEscolha);
+document.getElementById('escolha').addEventListener('click', e => { if (e.target.id === 'escolha') fecharEscolha(); });
+document.getElementById('e-camera').addEventListener('click', () => { fecharEscolha(); pedirFoto(alvoFoto.item, alvoFoto.etapa, alvoFoto.n, 'camera'); });
+document.getElementById('e-galeria').addEventListener('click', () => { fecharEscolha(); pedirFoto(alvoFoto.item, alvoFoto.etapa, alvoFoto.n, 'galeria'); });
+
 async function receberArquivo(e) {
-  const file = e.target.files && e.target.files[0];
+  const arquivos = Array.from(e.target.files || []);
   e.target.value = '';
-  if (!file || !alvoFoto || !laudoAtual) return;
-  const { item, etapa, n } = alvoFoto;
+  if (!arquivos.length || !alvoFoto || !laudoAtual) return;
+  const { item, etapa, n, troca } = alvoFoto;
+  // Várias fotos da galeria: a 1ª vai no quadro tocado, as outras nos quadros vazios da mesma etapa
+  let destinos = [n];
+  if (arquivos.length > 1 && !troca) {
+    const vazios = [];
+    for (let k = 1; k <= FOTOS_POR_ETAPA; k++) {
+      if (k !== n && !(await dbGet('fotos', chaveFoto(laudoAtual.id, item, etapa, k)))) vazios.push(k);
+    }
+    destinos = [n, ...vazios.filter(k => k > n), ...vazios.filter(k => k < n)];
+  }
+  const usar = arquivos.slice(0, destinos.length);
+  for (let i = 0; i < usar.length; i++) await gravarFoto(usar[i], item, etapa, destinos[i], i === usar.length - 1);
+  if (arquivos.length > usar.length) {
+    const sobra = arquivos.length - usar.length;
+    alert(`Só cabiam ${usar.length} foto(s) nesta etapa (máximo ${FOTOS_POR_ETAPA}). ${sobra === 1 ? '1 foto ficou de fora.' : sobra + ' fotos ficaram de fora.'}`);
+  }
+}
+
+async function gravarFoto(file, item, etapa, n, ultima) {
   const et = ETAPAS.find(x => x.id === etapa);
   // Foto da galeria: usa a data do arquivo; foto da câmera: agora
   const quando = file.lastModified && Math.abs(Date.now() - file.lastModified) < 1000 * 60 * 60 * 24 * 365 ? file.lastModified : Date.now();
@@ -475,9 +555,10 @@ async function receberArquivo(e) {
     ]);
     await dbPut('fotos', { chave: chaveFoto(laudoAtual.id, item, etapa, n), laudoId: laudoAtual.id, item, etapa, n, base64,
                            dataHora: quando, responsavel: nomeResp(), status: 'pendente' });
+    if (!ultima) return;
     fecharModal();
     await renderLaudo();
-    toast(`✅ Item ${item} — ${et.rot} ${n} salva.`);
+    toast(`✅ Item ${item} — ${et.rot} salva.`);
     if (navigator.onLine) sincronizarTudo();
   } catch (err) {
     console.error(err);
@@ -497,8 +578,8 @@ async function abrirModal(item, etapa, n) {
 }
 function fecharModal() { document.getElementById('modal').style.display = 'none'; }
 document.getElementById('m-fechar').addEventListener('click', fecharModal);
-document.getElementById('m-camera').addEventListener('click', () => pedirFoto(alvoFoto.item, alvoFoto.etapa, alvoFoto.n, 'camera'));
-document.getElementById('m-galeria').addEventListener('click', () => pedirFoto(alvoFoto.item, alvoFoto.etapa, alvoFoto.n, 'galeria'));
+document.getElementById('m-camera').addEventListener('click', () => { alvoFoto.troca = true; pedirFoto(alvoFoto.item, alvoFoto.etapa, alvoFoto.n, 'camera'); });
+document.getElementById('m-galeria').addEventListener('click', () => { alvoFoto.troca = true; pedirFoto(alvoFoto.item, alvoFoto.etapa, alvoFoto.n, 'galeria'); });
 document.getElementById('m-excluir').addEventListener('click', async () => {
   if (!confirm('Excluir esta foto?')) return;
   await dbDel('fotos', chaveFoto(laudoAtual.id, alvoFoto.item, alvoFoto.etapa, alvoFoto.n));
@@ -599,7 +680,7 @@ async function compartilharItem(n) {
 ${ETAPAS.map(et => {
     const q = fotos.filter(p => p.etapa === et.id).length;
     return (q >= K ? '✅ ' : '⏳ ') + et.rot + ' ' + q + '/' + K;
-  }).join('   ')}`;
+  }).join('   ')}${(l.obs || {})[n] ? `\n📝 Obs.: ${l.obs[n]}` : ''}`;
   await compartilharOuBaixar([arq], 'Item ' + n, texto);
 }
 
@@ -616,6 +697,11 @@ async function enviarFoto(f, laudo) {
     nomeArquivo: nomeArquivo(f),
     base64: f.base64.split(',')[1]
   };
+  await postar(corpo);
+}
+
+async function postar(corpo) {
+  if (APPS_SCRIPT_URL.includes('COLE_AQUI')) throw new Error('URL do Apps Script não configurada.');
   const r = await fetch(APPS_SCRIPT_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // evita preflight CORS
@@ -634,6 +720,23 @@ async function sincronizarTudo(manual = false) {
   try {
     const laudos = {}; (await dbAll('laudos')).forEach(l => { laudos[l.id] = l; });
     const pendentes = (await dbAll('fotos')).filter(f => f.status !== 'enviado' && laudos[f.laudoId] && laudos[f.laudoId].itens.includes(f.item));
+    // 1) observações (se falhar, não impede o envio das fotos)
+    try {
+    for (const l of Object.values(laudos)) {
+      const pend = Object.keys(l.obsPend || {}).filter(it => l.obsPend[it] && l.itens.includes(it));
+      for (const it of pend) {
+        const texto = (l.obs || {})[it] || '';
+        await postar({ tipo: 'obs', tag: l.tag, laudo: l.laudo || '', local: textoLocal(l), item: it,
+                       descricao: itemPorNum(it).d, observacao: texto, responsavel: nomeResp() });
+        const atual = await dbGet('laudos', l.id);
+        if (atual && (atual.obs || {})[it] === texto) {
+          delete atual.obsPend[it]; await dbPut('laudos', atual);
+          if (laudoAtual && laudoAtual.id === atual.id) laudoAtual = atual;
+        }
+      }
+    }
+    } catch (e) { console.warn('Observação não enviada:', e.message); }
+    // 2) fotos
     for (const f of pendentes) {
       await enviarFoto(f, laudos[f.laudoId]);
       // só marca como enviada se a foto não foi trocada enquanto subia
@@ -645,7 +748,7 @@ async function sincronizarTudo(manual = false) {
     }
   } catch (e) { erro = e; console.warn('Envio interrompido:', e.message); }
   sincronizando = false;
-  if (laudoAtual) await renderLaudo(); else await renderLista();
+  await renderSeguro();
   if (manual) {
     if (erro) toast('Não enviou: ' + erro.message, 4000);
     else toast(enviadas ? `☁️ ${enviadas} foto(s) enviada(s).` : 'Nada pendente.');
