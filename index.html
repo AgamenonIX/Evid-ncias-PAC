@@ -183,7 +183,7 @@
 <div id="escolha">
   <div class="folha">
     <div class="tit" id="escolha-tit">Adicionar foto</div>
-    <p class="dica" style="margin:0 0 6px;">Pela galeria dá para marcar várias fotos de uma vez — elas preenchem os quadros vazios desta etapa.</p>
+    <p class="dica" style="margin:0 0 6px;">Pela galeria dá para marcar várias fotos de uma vez (segure o dedo numa foto) — elas preenchem os quadros vazios desta etapa. Para ANTES, DURANTE e DEPOIS juntos, use o botão “Várias fotos de uma vez” do item.</p>
     <button class="btn" id="e-camera">📷 Tirar foto agora</button>
     <button class="btn claro" id="e-galeria">🖼️ Escolher da galeria</button>
     <button class="btn claro" id="e-cancelar" style="border:none;color:var(--texto-claro);">Cancelar</button>
@@ -323,10 +323,10 @@ const soDig = s => String(s || '').replace(/\D/g, '');
 
 /* ---------- Foto: reduz tamanho e grava carimbo (item, etapa, data/hora, local) ---------- */
 function carregarImagem(src) {
-  return new Promise((resolve, reject) => { const i = new Image(); i.onload = () => resolve(i); i.onerror = reject; i.src = src; });
+  return new Promise((resolve, reject) => { const i = new Image(); i.onload = () => resolve(i); i.onerror = () => reject(new Error('imagem não pôde ser aberta')); i.src = src; });
 }
 function lerArquivo(file) {
-  return new Promise((resolve, reject) => { const r = new FileReader(); r.onload = e => resolve(e.target.result); r.onerror = reject; r.readAsDataURL(file); });
+  return new Promise((resolve, reject) => { const r = new FileReader(); r.onload = e => resolve(e.target.result); r.onerror = () => reject(new Error('arquivo não pôde ser lido')); r.readAsDataURL(file); });
 }
 async function processarFoto(file, linhas, maxLado = 1600, qualidade = 0.75) {
   const img = await carregarImagem(await lerArquivo(file));
@@ -495,6 +495,7 @@ async function renderLaudo() {
       <div class="obs-rot">OBSERVAÇÃO<span>${(l.obsPend || {})[n] ? '⏳ aguardando envio' : ((l.obs || {})[n] ? '☁️ enviada' : '')}</span></div>
       <textarea class="obs" data-obs="${esc(n)}" placeholder="Ex.: área com acesso restrito, faltou andaime, retrabalho...">${esc((l.obs || {})[n] || '')}</textarea>
       <div class="acoes-item">
+        <button class="btn-mini" data-todas="${esc(n)}" style="background:var(--azul-claro);color:#fff;" ${qtd >= tot ? 'disabled style="opacity:.5"' : ''}>🖼️ Várias fotos de uma vez</button>
         <button class="btn-mini btn-zap" data-zap="${esc(n)}" ${qtd === 0 ? 'disabled style="opacity:.5"' : ''}>📤 Enviar item no WhatsApp</button>
       </div>
     </div>`;
@@ -515,6 +516,12 @@ async function renderLaudo() {
     else abrirEscolha(item, etapa, n);
   }));
   document.querySelectorAll('#lista-itens [data-zap]').forEach(b => b.addEventListener('click', () => compartilharItem(b.dataset.zap)));
+  document.querySelectorAll('#lista-itens [data-todas]').forEach(b => b.addEventListener('click', () => {
+    if (!nomeResp()) { alert('Antes de fotografar, informe seu nome na tela inicial (campo "Seu nome").'); irParaLista(); return; }
+    alvoFoto = { item: b.dataset.todas, etapa: null, n: null, todas: true };
+    toast('Marque até 9 fotos (segure o dedo numa foto para marcar várias).', 3500);
+    document.getElementById('galeria-input').click();
+  }));
   document.querySelectorAll('#lista-itens textarea.obs').forEach(t => {
     t.addEventListener('input', () => salvarObs(t.dataset.obs, t.value, false));
     t.addEventListener('change', () => salvarObs(t.dataset.obs, t.value, true));
@@ -575,45 +582,70 @@ async function receberArquivo(e) {
   const arquivos = Array.from(e.target.files || []);
   e.target.value = '';
   if (!arquivos.length || !alvoFoto || !laudoAtual) return;
-  const { item, etapa, n, troca } = alvoFoto;
-  // Várias fotos da galeria: a 1ª vai no quadro tocado, as outras nos quadros vazios da mesma etapa
-  let destinos = [n];
-  if (arquivos.length > 1 && !troca) {
-    const vazios = [];
-    for (let k = 1; k <= FOTOS_POR_ETAPA; k++) {
-      if (k !== n && !(await dbGet('fotos', chaveFoto(laudoAtual.id, item, etapa, k)))) vazios.push(k);
+  const { item, etapa, n, troca, todas } = alvoFoto;
+  let destinos;   // [{etapa, n}]
+  if (todas) {
+    // Várias fotos para o item inteiro: ordena pela data da foto e preenche os quadros vazios
+    // na ordem ANTES 1-3, DURANTE 1-3, DEPOIS 1-3
+    arquivos.sort((a, b) => (a.lastModified || 0) - (b.lastModified || 0));
+    destinos = [];
+    for (const et of ETAPAS) for (let k = 1; k <= FOTOS_POR_ETAPA; k++)
+      if (!(await dbGet('fotos', chaveFoto(laudoAtual.id, item, et.id, k)))) destinos.push({ etapa: et.id, n: k });
+    if (!destinos.length) { alert('Todos os quadros deste item já têm foto. Para trocar, toque na foto.'); return; }
+  } else {
+    // Várias fotos da galeria num quadro: a 1ª vai no quadro tocado, as outras nos quadros vazios da mesma etapa
+    destinos = [{ etapa, n }];
+    if (arquivos.length > 1 && !troca) {
+      const vazios = [];
+      for (let k = 1; k <= FOTOS_POR_ETAPA; k++) if (k !== n && !(await dbGet('fotos', chaveFoto(laudoAtual.id, item, etapa, k)))) vazios.push(k);
+      destinos.push(...[...vazios.filter(k => k > n), ...vazios.filter(k => k < n)].map(k => ({ etapa, n: k })));
     }
-    destinos = [n, ...vazios.filter(k => k > n), ...vazios.filter(k => k < n)];
   }
-  const usar = arquivos.slice(0, destinos.length);
-  for (let i = 0; i < usar.length; i++) await gravarFoto(usar[i], item, etapa, destinos[i], i === usar.length - 1);
-  if (arquivos.length > usar.length) {
-    const sobra = arquivos.length - usar.length;
-    alert(`Só cabiam ${usar.length} foto(s) nesta etapa (máximo ${FOTOS_POR_ETAPA}). ${sobra === 1 ? '1 foto ficou de fora.' : sobra + ' fotos ficaram de fora.'}`);
+  // foto que falha não ocupa quadro: a próxima foto vai para o mesmo lugar
+  const erros = []; let ok = 0, usadas = 0;
+  for (let i = 0; i < arquivos.length && ok < destinos.length; i++) {
+    usadas++;
+    toast(`Processando foto ${i + 1} de ${arquivos.length}...`, 1500);
+    const r = await gravarFoto(arquivos[i], item, destinos[ok].etapa, destinos[ok].n);
+    if (r.ok) ok++; else erros.push(r.erro);
   }
+  const usar = { length: ok };
+  fecharModal();
+  await renderLaudo();
+  if (ok) { toast(`✅ ${ok} foto(s) salva(s) no item ${item}.`); if (navigator.onLine) sincronizarTudo(); }
+  const msgs = [];
+  if (erros.length) {
+    const naoBaixadas = erros.filter(x => x === 'nao_baixada').length;
+    const outras = erros.filter(x => x !== 'nao_baixada');
+    if (naoBaixadas) msgs.push(`${naoBaixadas} foto(s) não estão baixadas no celular — aparecem na galeria só como miniatura (comum com fotos do WhatsApp e do Google Fotos). Abra a foto no WhatsApp ou na Galeria para ela baixar e escolha de novo.`);
+    outras.forEach(x => msgs.push('Não consegui usar uma foto: ' + x));
+  }
+  if (arquivos.length > usadas) {
+    const sobra = arquivos.length - usadas;
+    msgs.push(`Só cabiam ${usar.length} foto(s) ${todas ? 'nos quadros vazios deste item' : 'nesta etapa'}. ${sobra === 1 ? '1 foto ficou de fora.' : sobra + ' fotos ficaram de fora.'}`);
+  }
+  if (msgs.length) alert(msgs.join('\n\n'));
 }
 
-async function gravarFoto(file, item, etapa, n, ultima) {
+async function gravarFoto(file, item, etapa, n) {
   const et = ETAPAS.find(x => x.id === etapa);
   // Foto da galeria: usa a data do arquivo; foto da câmera: agora
   const quando = file.lastModified && Math.abs(Date.now() - file.lastModified) < 1000 * 60 * 60 * 24 * 365 ? file.lastModified : Date.now();
-  toast('Processando foto...', 1500);
+  if (!file.size) return { ok: false, erro: 'nao_baixada' };
+  let base64;
   try {
-    const base64 = await processarFoto(file, [
+    base64 = await processarFoto(file, [
       `ITEM ${item} · ${et.rot} ${n}/${FOTOS_POR_ETAPA}`,
       `${fmtDataHora(quando)} · ${textoLocal(laudoAtual)}`
     ]);
-    await dbPut('fotos', { chave: chaveFoto(laudoAtual.id, item, etapa, n), laudoId: laudoAtual.id, item, etapa, n, base64,
-                           dataHora: quando, responsavel: nomeResp(), status: 'pendente' });
-    if (!ultima) return;
-    fecharModal();
-    await renderLaudo();
-    toast(`✅ Item ${item} — ${et.rot} salva.`);
-    if (navigator.onLine) sincronizarTudo();
   } catch (err) {
     console.error(err);
-    alert('Não consegui processar a foto: ' + err.message);
+    if (/hei[cf]/i.test(file.type || file.name || '')) return { ok: false, erro: `a foto ${file.name || ''} está em formato HEIC; no celular, salve como JPG e tente de novo.` };
+    return { ok: false, erro: 'nao_baixada' };   // arquivo da nuvem sem o conteúdo, ou que o celular não conseguiu abrir
   }
+  await dbPut('fotos', { chave: chaveFoto(laudoAtual.id, item, etapa, n), laudoId: laudoAtual.id, item, etapa, n, base64,
+                         dataHora: quando, responsavel: nomeResp(), status: 'pendente' });
+  return { ok: true };
 }
 document.getElementById('foto-input').addEventListener('change', receberArquivo);
 document.getElementById('galeria-input').addEventListener('change', receberArquivo);
