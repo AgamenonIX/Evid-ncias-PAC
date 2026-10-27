@@ -33,7 +33,7 @@
   .card{background:#fff;border-radius:12px;padding:14px;margin-bottom:12px;box-shadow:0 1px 3px rgba(0,0,0,.08);}
   label{display:block;font-weight:600;font-size:14px;margin-bottom:6px;}
   .campo{margin-bottom:14px;}
-  input[type=text],input[type=date]{width:100%;padding:12px;font-size:16px;border:1.5px solid var(--cinza-borda);border-radius:8px;background:#fff;color:var(--texto);font-family:inherit;}
+  input[type=text],input[type=date],select.sel{width:100%;padding:12px;font-size:16px;border:1.5px solid var(--cinza-borda);border-radius:8px;background:#fff;color:var(--texto);font-family:inherit;}
   input:focus{outline:2px solid var(--azul-claro);border-color:var(--azul-claro);}
   .btn{display:block;width:100%;padding:15px;border:none;border-radius:10px;font-size:16px;font-weight:700;cursor:pointer;color:#fff;background:var(--azul-claro);margin-top:8px;}
   .btn.verde{background:var(--verde);} .btn.verde:active{background:var(--verde-esc);}
@@ -124,6 +124,7 @@
     <div class="card">
       <label style="margin-bottom:2px;">Laudos / locais</label>
       <p class="dica">Cada laudo guarda as fotos ANTES, DURANTE e DEPOIS de cada item. As fotos ficam salvas neste celular e são enviadas sozinhas para o medidor quando tiver internet.</p>
+      <p class="dica" id="info-bm"></p>
       <div id="lista-laudos" style="margin-top:8px;"><div id="vazio">Nenhum laudo cadastrado ainda.</div></div>
       <button class="btn vinho" id="btn-novo">＋ Novo laudo</button>
     </div>
@@ -132,6 +133,11 @@
   <!-- ================= TELA 2: NOVO / EDITAR LAUDO ================= -->
   <section id="tela-form" class="tela">
     <form id="form-laudo" class="card" autocomplete="off">
+      <div class="campo" id="campo-bm">
+        <label for="sel-laudo-bm">Laudo do BM</label>
+        <select id="sel-laudo-bm" class="sel"><option value="">— digitar à mão —</option></select>
+        <p class="dica" id="dica-bm"></p>
+      </div>
       <div class="campo">
         <label>Equipamento / TAG *</label>
         <input type="text" name="tag" required placeholder="Ex: CT1083KS01">
@@ -289,6 +295,32 @@ function fmtDataHora(ms) {
 function textoLocal(l) { return l.laudo ? `${l.tag} (LAUDO: ${l.laudo})` : l.tag; }
 const itemPorNum = n => ITENS.find(i => i.n === n) || { n, d: '' };
 
+/* ---------- Laudos do BM (mandados pelo programa da medição) ---------- */
+let LAUDOS_BM = null;
+try { LAUDOS_BM = JSON.parse(localStorage.getItem('evid_laudos_bm') || 'null'); } catch (e) {}
+function garantirItens(lista) {
+  (lista || []).forEach(i => { const n = String(i.n); if (!ITENS.find(x => x.n === n)) ITENS.push({ n, d: i.d || '' }); });
+  ITENS.sort((a, b) => Number(a.n) - Number(b.n));
+}
+if (LAUDOS_BM) (LAUDOS_BM.laudos || []).forEach(l => garantirItens(l.itens));
+function infoBM() {
+  const el = document.getElementById('info-bm'); if (!el) return;
+  const n = (LAUDOS_BM?.laudos || []).length;
+  el.textContent = n ? `📋 ${n} laudo(s) do BM ${LAUDOS_BM.bm || ''} disponíveis para escolher em “Novo laudo”.` : '';
+}
+async function atualizarLaudosBM() {
+  if (!navigator.onLine || APPS_SCRIPT_URL.includes('COLE_AQUI')) return;
+  try {
+    const r = await fetch(APPS_SCRIPT_URL + '?acao=laudos', { cache: 'no-store' });
+    const j = await r.json();
+    if (!j.ok) return;
+    LAUDOS_BM = j; (j.laudos || []).forEach(l => garantirItens(l.itens));
+    try { localStorage.setItem('evid_laudos_bm', JSON.stringify(j)); } catch (e) {}
+    infoBM();
+  } catch (e) { console.warn('Laudos do BM não atualizados:', e.message); }
+}
+const soDig = s => String(s || '').replace(/\D/g, '');
+
 /* ---------- Foto: reduz tamanho e grava carimbo (item, etapa, data/hora, local) ---------- */
 function carregarImagem(src) {
   return new Promise((resolve, reject) => { const i = new Image(); i.onload = () => resolve(i); i.onerror = reject; i.src = src; });
@@ -377,13 +409,31 @@ function abrirForm(laudo) {
   f.tag.value = laudo ? laudo.tag : '';
   f.laudo.value = laudo ? (laudo.laudo || '') : '';
   const marcados = laudo ? laudo.itens : [];
+  const lbm = (LAUDOS_BM?.laudos || []);
+  const sel = document.getElementById('sel-laudo-bm');
+  document.getElementById('campo-bm').style.display = lbm.length ? 'block' : 'none';
+  sel.innerHTML = '<option value="">— digitar à mão —</option>' + lbm.map((l, i) =>
+    `<option value="${i}" ${laudo && soDig(laudo.laudo) && soDig(laudo.laudo) === soDig(l.laudo) ? 'selected' : ''}>${esc(l.tag)} · laudo ${esc(l.laudo || '—')}</option>`).join('');
+  document.getElementById('dica-bm').textContent = lbm.length ? `Lista do BM ${LAUDOS_BM.bm || ''}${LAUDOS_BM.periodo ? ' (' + LAUDOS_BM.periodo + ')' : ''}. Escolha e o app preenche TAG, laudo e itens.` : '';
+  renderChk(marcados);
+  mostrarTela('tela-form', laudo ? 'Editar laudo' : 'Novo laudo', 'Escolha o laudo do BM ou preencha à mão');
+}
+function renderChk(marcados) {
   document.getElementById('lista-chk').innerHTML = ITENS.map(i => `
     <label class="chk" style="font-weight:400;margin:0;">
       <input type="checkbox" value="${esc(i.n)}" ${marcados.includes(i.n) ? 'checked' : ''}>
       <span><b>${esc(i.n)}</b> — ${esc(i.d)}</span>
     </label>`).join('');
-  mostrarTela('tela-form', laudo ? 'Editar laudo' : 'Novo laudo', 'Escolha os itens que precisam de evidência');
 }
+document.getElementById('sel-laudo-bm').addEventListener('change', e => {
+  const l = (LAUDOS_BM?.laudos || [])[Number(e.target.value)];
+  if (e.target.value === '' || !l) return;
+  const f = document.getElementById('form-laudo');
+  f.tag.value = l.tag || ''; f.laudo.value = l.laudo || '';
+  garantirItens(l.itens);
+  renderChk((l.itens || []).map(i => String(i.n)));
+  toast('✅ Laudo do BM preenchido.');
+});
 document.getElementById('form-laudo').addEventListener('submit', async (e) => {
   e.preventDefault();
   const f = e.target;
@@ -758,7 +808,7 @@ document.getElementById('btn-sincronizar').addEventListener('click', () => {
   if (!navigator.onLine) { toast('Sem internet agora. Envia sozinho quando voltar.'); return; }
   toast('Enviando...', 1500); sincronizarTudo(true);
 });
-window.addEventListener('online', () => { atualizarStatusBar(); sincronizarTudo(); });
+window.addEventListener('online', () => { atualizarStatusBar(); sincronizarTudo(); atualizarLaudosBM(); });
 window.addEventListener('offline', atualizarStatusBar);
 setInterval(() => { if (navigator.onLine) sincronizarTudo(); }, 60000);
 
@@ -771,6 +821,8 @@ function atualizarStatusBar() {
 /* ---------- Início ---------- */
 atualizarStatusBar();
 irParaLista();
+infoBM();
+atualizarLaudosBM();
 if (navigator.onLine) sincronizarTudo();
 </script>
 </body>
