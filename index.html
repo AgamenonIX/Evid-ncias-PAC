@@ -7,7 +7,7 @@
 <title>Evidências de Campo</title>
 <link rel="manifest" href="./manifest.json">
 <link rel="icon" href="./logo.png">
-<link rel="apple-touch-icon" href="./logo.png">
+<link rel="apple-touch-icon" href="./icon-192.png">
 <style>
   :root{
     --vinho:#9B142D;
@@ -275,6 +275,25 @@ const dbGet     = (store, k)   => tx(store, 'readonly',  st => st.get(k));
 const dbDel     = (store, k)   => tx(store, 'readwrite', st => st.delete(k));
 const dbAll     = (store)      => tx(store, 'readonly',  st => st.getAll());
 const fotosDoLaudo = (laudoId) => tx('fotos', 'readonly', st => st.index('laudoId').getAll(laudoId));
+// Só as CHAVES das fotos do laudo (sem carregar as imagens) — usado para contar fotos
+const chavesDoLaudo = (laudoId) => tx('fotos', 'readonly', st => st.index('laudoId').getAllKeys(laudoId));
+// Chaves das fotos ainda não enviadas, lendo uma por vez (não carrega todas as imagens juntas na memória)
+async function chavesPendentes() {
+  const db = await abrirDB();
+  return new Promise((resolve, reject) => {
+    const chaves = [];
+    const t = db.transaction('fotos', 'readonly');
+    const req = t.objectStore('fotos').openCursor();
+    req.onsuccess = () => {
+      const c = req.result;
+      if (!c) return;
+      if (c.value.status !== 'enviado') chaves.push(c.value.chave);
+      c.continue();
+    };
+    t.oncomplete = () => resolve(chaves);
+    t.onerror = () => reject(t.error);
+  });
+}
 const chaveFoto = (laudoId, item, etapa, n) => `${laudoId}|${item}|${etapa}|${n}`;
 const FOTOS_POR_ITEM = () => ETAPAS.length * FOTOS_POR_ETAPA;
 
@@ -380,8 +399,9 @@ async function irParaLista() {
 
 /* ---------- Tela 1: lista ---------- */
 async function contarFotos(laudo) {
-  const fotos = await fotosDoLaudo(laudo.id);
-  const validas = fotos.filter(f => laudo.itens.includes(f.item));
+  // chave = laudoId|item|etapa|n → conta pelo item sem abrir as imagens
+  const chaves = await chavesDoLaudo(laudo.id);
+  const validas = chaves.filter(k => laudo.itens.includes(String(k).split('|')[1]));
   return { feitas: validas.length, total: laudo.itens.length * FOTOS_POR_ITEM() };
 }
 async function renderLista() {
@@ -495,7 +515,7 @@ async function renderLaudo() {
       <div class="obs-rot">OBSERVAÇÃO<span>${(l.obsPend || {})[n] ? '⏳ aguardando envio' : ((l.obs || {})[n] ? '☁️ enviada' : '')}</span></div>
       <textarea class="obs" data-obs="${esc(n)}" placeholder="Ex.: área com acesso restrito, faltou andaime, retrabalho...">${esc((l.obs || {})[n] || '')}</textarea>
       <div class="acoes-item">
-        <button class="btn-mini" data-todas="${esc(n)}" style="background:var(--azul-claro);color:#fff;" ${qtd >= tot ? 'disabled style="opacity:.5"' : ''}>🖼️ Várias fotos de uma vez</button>
+        <button class="btn-mini" data-todas="${esc(n)}" style="background:var(--azul-claro);color:#fff;${qtd >= tot ? 'opacity:.5;' : ''}" ${qtd >= tot ? 'disabled' : ''}>🖼️ Várias fotos de uma vez</button>
         <button class="btn-mini btn-zap" data-zap="${esc(n)}" ${qtd === 0 ? 'disabled style="opacity:.5"' : ''}>📤 Enviar item no WhatsApp</button>
       </div>
     </div>`;
@@ -663,7 +683,11 @@ document.getElementById('m-fechar').addEventListener('click', fecharModal);
 document.getElementById('m-camera').addEventListener('click', () => { alvoFoto.troca = true; pedirFoto(alvoFoto.item, alvoFoto.etapa, alvoFoto.n, 'camera'); });
 document.getElementById('m-galeria').addEventListener('click', () => { alvoFoto.troca = true; pedirFoto(alvoFoto.item, alvoFoto.etapa, alvoFoto.n, 'galeria'); });
 document.getElementById('m-excluir').addEventListener('click', async () => {
-  if (!confirm('Excluir esta foto?')) return;
+  const f = await dbGet('fotos', chaveFoto(laudoAtual.id, alvoFoto.item, alvoFoto.etapa, alvoFoto.n));
+  const aviso = f && f.status === 'enviado'
+    ? `Excluir esta foto do celular?\n\nATENÇÃO: ela JÁ FOI ENVIADA ao medidor. Excluir aqui NÃO apaga do Google Drive — avise o medidor ou apague lá a foto ${nomeArquivo(f)}.`
+    : 'Excluir esta foto?';
+  if (!confirm(aviso)) return;
   await dbDel('fotos', chaveFoto(laudoAtual.id, alvoFoto.item, alvoFoto.etapa, alvoFoto.n));
   fecharModal();
   await renderLaudo();
@@ -672,9 +696,9 @@ document.getElementById('m-excluir').addEventListener('click', async () => {
 /* ---------- Editar / excluir laudo ---------- */
 document.getElementById('btn-editar').addEventListener('click', () => abrirForm(laudoAtual));
 document.getElementById('btn-excluir-laudo').addEventListener('click', async () => {
-  if (!confirm(`Excluir o laudo "${textoLocal(laudoAtual)}" e TODAS as fotos dele? Não dá para desfazer.`)) return;
-  const fotos = await fotosDoLaudo(laudoAtual.id);
-  for (const f of fotos) await dbDel('fotos', f.chave);
+  if (!confirm(`Excluir o laudo "${textoLocal(laudoAtual)}" e TODAS as fotos dele? Não dá para desfazer.\n\nFotos que já foram enviadas continuam no Google Drive.`)) return;
+  const chaves = await chavesDoLaudo(laudoAtual.id);
+  for (const k of chaves) await dbDel('fotos', k);
   await dbDel('laudos', laudoAtual.id);
   toast('Laudo excluído.');
   irParaLista();
@@ -798,10 +822,10 @@ let sincronizando = false;
 async function sincronizarTudo(manual = false) {
   if (sincronizando) return;
   sincronizando = true;
-  let enviadas = 0, erro = null;
+  let enviadas = 0, falhas = 0, erro = null;
   try {
     const laudos = {}; (await dbAll('laudos')).forEach(l => { laudos[l.id] = l; });
-    const pendentes = (await dbAll('fotos')).filter(f => f.status !== 'enviado' && laudos[f.laudoId] && laudos[f.laudoId].itens.includes(f.item));
+    const pendentes = await chavesPendentes();
     // 1) observações (se falhar, não impede o envio das fotos)
     try {
     for (const l of Object.values(laudos)) {
@@ -818,21 +842,30 @@ async function sincronizarTudo(manual = false) {
       }
     }
     } catch (e) { console.warn('Observação não enviada:', e.message); }
-    // 2) fotos
-    for (const f of pendentes) {
-      await enviarFoto(f, laudos[f.laudoId]);
-      // só marca como enviada se a foto não foi trocada enquanto subia
-      const atual = await dbGet('fotos', f.chave);
-      if (atual && atual.dataHora === f.dataHora && atual.base64.length === f.base64.length) {
-        atual.status = 'enviado'; await dbPut('fotos', atual);
+    // 2) fotos — uma de cada vez; se uma falhar, segue para as próximas
+    for (const chave of pendentes) {
+      if (!navigator.onLine) { erro = new Error('a internet caiu durante o envio'); break; }
+      const f = await dbGet('fotos', chave);
+      if (!f || f.status === 'enviado' || !laudos[f.laudoId] || !laudos[f.laudoId].itens.includes(f.item)) continue;
+      try {
+        await enviarFoto(f, laudos[f.laudoId]);
+        // só marca como enviada se a foto não foi trocada enquanto subia
+        const atual = await dbGet('fotos', f.chave);
+        if (atual && atual.dataHora === f.dataHora && atual.base64 === f.base64) {
+          atual.status = 'enviado'; await dbPut('fotos', atual);
+        }
+        enviadas++;
+      } catch (e) {
+        falhas++; erro = e;
+        console.warn('Foto não enviada:', f.chave, e.message);
       }
-      enviadas++;
     }
   } catch (e) { erro = e; console.warn('Envio interrompido:', e.message); }
   sincronizando = false;
   await renderSeguro();
   if (manual) {
-    if (erro) toast('Não enviou: ' + erro.message, 4000);
+    if (falhas) toast(`☁️ ${enviadas} enviada(s), ⚠️ ${falhas} com erro (${erro.message}). Tenta de novo sozinho em 1 min.`, 5000);
+    else if (erro) toast('Não enviou: ' + erro.message, 4000);
     else toast(enviadas ? `☁️ ${enviadas} foto(s) enviada(s).` : 'Nada pendente.');
   }
 }
